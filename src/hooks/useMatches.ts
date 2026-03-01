@@ -251,9 +251,7 @@ export function useLiveMatchesAdvanced(options?: {
     const uniqueStatuses = [...new Set(matches.map(m => JSON.stringify(m.status)))];
     console.log('[RAW_MATCHES_SAMPLE] unique status values (all matches):', uniqueStatuses);
   }
-  const liveMatches = matches.filter((m) =>
-    ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes((m.status as unknown as { short: string })?.short?.toUpperCase())
-  );
+  const liveMatches = matches.filter((m) => m.status === 'live');
   console.log('[MATCHES_FILTERED] liveMatches=', liveMatches.length, 'allMatches=', matches.length);
 
   return { ...query, liveMatches };
