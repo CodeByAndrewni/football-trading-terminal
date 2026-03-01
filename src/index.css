@@ -1,0 +1,335 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   足球交易决策终端 - 全局样式系统
+   ============================================ */
+
+@layer base {
+  :root {
+    --bg-deepest: #0d1117;
+    --bg-card: #161b22;
+    --bg-component: #21262d;
+    --border-default: #30363d;
+    --accent-primary: #00d4ff;
+    --accent-danger: #ff4444;
+    --accent-warning: #ffaa00;
+    --accent-success: #00cc66;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #484f58;
+  }
+
+  * {
+    @apply box-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-bg-deepest text-text-primary font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* 自定义滚动条 */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-bg-deepest;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border-default rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-text-muted;
+  }
+}
+
+@layer components {
+  /* 卡片容器 */
+  .card {
+    @apply bg-bg-card border border-border-default rounded-xl p-4 shadow-card;
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .card:hover {
+    @apply shadow-card-hover border-text-muted;
+  }
+
+  .card-glow {
+    @apply card;
+    @apply hover:shadow-glow-primary hover:border-accent-primary/50;
+  }
+
+  /* 胶囊标签 */
+  .pill {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .pill-primary {
+    @apply pill bg-accent-primary/20 text-accent-primary border border-accent-primary/30;
+  }
+
+  .pill-danger {
+    @apply pill bg-accent-danger/20 text-accent-danger border border-accent-danger/30;
+  }
+
+  .pill-warning {
+    @apply pill bg-accent-warning/20 text-accent-warning border border-accent-warning/30;
+  }
+
+  .pill-success {
+    @apply pill bg-accent-success/20 text-accent-success border border-accent-success/30;
+  }
+
+  .pill-muted {
+    @apply pill bg-bg-component text-text-secondary border border-border-default;
+  }
+
+  /* 数字显示 - 比分/评分 */
+  .score-display {
+    @apply font-mono font-bold text-4xl tracking-tight;
+    text-shadow: 0 0 20px currentColor;
+  }
+
+  .score-display-sm {
+    @apply font-mono font-semibold text-2xl tracking-tight;
+  }
+
+  .score-display-lg {
+    @apply font-mono font-bold text-6xl tracking-tight;
+    text-shadow: 0 0 30px currentColor;
+  }
+
+  /* 预警边框呼吸动画 */
+  .alert-breathe {
+    @apply animate-border-breathe;
+  }
+
+  /* 进球闪光效果 */
+  .goal-flash {
+    @apply animate-goal-flash;
+  }
+
+  /* 按钮样式 */
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium text-sm;
+    @apply transition-all duration-200 ease-out;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-bg-deepest;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent-primary text-bg-deepest;
+    @apply hover:bg-accent-primary/90 hover:shadow-glow-primary;
+    @apply focus:ring-accent-primary;
+  }
+
+  .btn-secondary {
+    @apply btn bg-bg-component text-text-primary border border-border-default;
+    @apply hover:bg-border-default hover:border-text-muted;
+    @apply focus:ring-border-default;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-text-secondary;
+    @apply hover:bg-bg-component hover:text-text-primary;
+    @apply focus:ring-border-default;
+  }
+
+  .btn-danger {
+    @apply btn bg-accent-danger/20 text-accent-danger border border-accent-danger/30;
+    @apply hover:bg-accent-danger/30 hover:shadow-glow-danger;
+    @apply focus:ring-accent-danger;
+  }
+
+  /* 输入框样式 */
+  .input {
+    @apply w-full px-4 py-2.5 rounded-lg bg-bg-component text-text-primary;
+    @apply border border-border-default;
+    @apply placeholder:text-text-muted;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary;
+  }
+
+  /* 表格样式 */
+  .table-header {
+    @apply text-xs font-medium text-text-secondary uppercase tracking-wider;
+  }
+
+  .table-cell {
+    @apply py-3 px-4 border-b border-border-default;
+  }
+
+  /* 进度条 */
+  .progress-bar {
+    @apply h-2 rounded-full bg-bg-component overflow-hidden;
+  }
+
+  .progress-fill {
+    @apply h-full rounded-full transition-all duration-500 ease-out;
+  }
+
+  /* 数据网格 */
+  .data-grid {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  /* 导航栏 */
+  .nav-link {
+    @apply flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium;
+    @apply text-text-secondary transition-all duration-200;
+    @apply hover:bg-bg-component hover:text-text-primary;
+  }
+
+  .nav-link-active {
+    @apply nav-link bg-accent-primary/10 text-accent-primary;
+    @apply border-l-2 border-accent-primary;
+  }
+
+  /* 状态指示器 */
+  .status-dot {
+    @apply w-2 h-2 rounded-full;
+  }
+
+  .status-live {
+    @apply status-dot bg-accent-success animate-pulse;
+  }
+
+  .status-warning {
+    @apply status-dot bg-accent-warning animate-pulse;
+  }
+
+  .status-danger {
+    @apply status-dot bg-accent-danger animate-pulse;
+  }
+
+  /* 图表容器 */
+  .chart-container {
+    @apply w-full h-64 bg-bg-component rounded-lg p-4;
+  }
+
+  /* 分隔线 */
+  .divider {
+    @apply h-px bg-border-default my-4;
+  }
+
+  .divider-vertical {
+    @apply w-px bg-border-default mx-4 h-full;
+  }
+}
+
+@layer utilities {
+  /* 移动端安全区域 */
+  .safe-area-inset {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* 移动端触摸优化 */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  /* 移动端卡片 */
+  .mobile-card {
+    @apply relative p-3 rounded-lg bg-bg-card border border-border-default;
+    @apply active:bg-bg-component transition-colors;
+  }
+
+  /* 底部导航栏 */
+  .bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 z-50;
+    @apply bg-bg-card/95 backdrop-blur-md border-t border-border-default;
+    @apply safe-area-inset;
+  }
+
+  /* 移动端抽屉 */
+  .drawer-overlay {
+    @apply fixed inset-0 z-40 bg-black/60 backdrop-blur-sm;
+  }
+
+  .drawer-content {
+    @apply fixed top-0 left-0 bottom-0 z-50 w-72 max-w-[85vw];
+    @apply bg-bg-card border-r border-border-default;
+    @apply transform transition-transform duration-300 ease-out;
+  }
+
+  /* 文字渐变 */
+  .text-gradient-primary {
+    @apply bg-gradient-to-r from-accent-primary to-accent-success bg-clip-text text-transparent;
+  }
+
+  .text-gradient-danger {
+    @apply bg-gradient-to-r from-accent-danger to-accent-warning bg-clip-text text-transparent;
+  }
+
+  /* 玻璃态效果 */
+  .glass {
+    @apply bg-bg-card/80 backdrop-blur-xl;
+  }
+
+  /* 隐藏滚动条但保留滚动功能 */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 数字动画 */
+  .number-animate {
+    @apply animate-number-roll;
+  }
+
+  /* 截断文本 */
+  .truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* 网格背景 */
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(48, 54, 61, 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(48, 54, 61, 0.3) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* 扫描线效果 */
+  .scanline {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .scanline::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-primary), transparent);
+    animation: scanline 3s linear infinite;
+  }
+
+  @keyframes scanline {
+    0% { top: 0; opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { top: 100%; opacity: 1; }
+  }
+}

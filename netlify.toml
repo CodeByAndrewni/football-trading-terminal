@@ -1,0 +1,163 @@
+[build]
+  command = "npm install && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# ============================================
+# API Proxy Rules - MUST be before catch-all
+# Proxy to API-Football with API key from env
+# ============================================
+
+# Live odds: /api/football/odds?fixture=xxx&live=true → /odds/live?fixture=xxx
+[[redirects]]
+  from = "/api/football/odds-live"
+  to = "https://v3.football.api-sports.io/odds/live"
+  status = 200
+  force = true
+  [redirects.headers]
+    x-apisports-key = "${FOOTBALL_API_KEY}"
+
+# Pre-match odds: /api/football/odds?fixture=xxx → /odds?fixture=xxx
+[[redirects]]
+  from = "/api/football/odds-prematch"
+  to = "https://v3.football.api-sports.io/odds"
+  status = 200
+  force = true
+  [redirects.headers]
+    x-apisports-key = "${FOOTBALL_API_KEY}"
+
+# Live fixtures
+[[redirects]]
+  from = "/api/football/fixtures-live"
+  to = "https://v3.football.api-sports.io/fixtures?live=all"
+  status = 200
+  force = true
+  [redirects.headers]
+    x-apisports-key = "${FOOTBALL_API_KEY}"
+
+# Fixture by ID (with statistics)
+[[redirects]]
+  from = "/api/football/fixture/:id"
+  to = "https://v3.football.api-sports.io/fixtures?id=:id"
+  status = 200
+  force = true
+  [redirects.headers]
+    x-apisports-key = "${FOOTBALL_API_KEY}"
+
+# Statistics
+[[redirects]]
+  from = "/api/football/statistics/:id"
+  to = "https://v3.football.api-sports.io/fixtures/statistics?fixture=:id"
+  status = 200
+  force = true
+  [redirects.headers]
+    x-apisports-key = "${FOOTBALL_API_KEY}"
+
+# Events
+[[redirects]]
+  from = "/api/football/events/:id"
+  to = "https://v3.football.api-sports.io/fixtures/events?fixture=:id"
+  status = 200
+  force = true
+  [redirects.headers]
+    x-apisports-key = "${FOOTBALL_API_KEY}"
+
+# Lineups
+[[redirects]]
+  from = "/api/football/lineups/:id"
+  to = "https://v3.football.api-sports.io/fixtures/lineups?fixture=:id"
+  status = 200
+  force = true
+  [redirects.headers]
+    x-apisports-key = "${FOOTBALL_API_KEY}"
+
+# Health check
+[[redirects]]
+  from = "/api/health"
+  to = "https://v3.football.api-sports.io/status"
+  status = 200
+  force = true
+  [redirects.headers]
+    x-apisports-key = "${FOOTBALL_API_KEY}"
+
+# ============================================
+# The Odds API - Second Odds Data Source
+# Proxy to The Odds API with API key from env
+# ============================================
+
+# The Odds API: /api/theodds/:sportKey → The Odds API
+[[redirects]]
+  from = "/api/theodds/:sportKey"
+  to = "https://api.the-odds-api.com/v4/sports/:sportKey/odds/?regions=eu&markets=h2h,spreads,totals&oddsFormat=decimal&apiKey=${THE_ODDS_API_KEY}"
+  status = 200
+  force = true
+
+# ============================================
+# Sportmonks API - Third Data Source (14-day trial)
+# With Chinese localization support
+# ============================================
+
+# Sportmonks: Livescores inplay
+[[redirects]]
+  from = "/api/sportmonks/livescores/inplay"
+  to = "https://api.sportmonks.com/v3/football/livescores/inplay?api_token=${SPORTMONKS_API_KEY}"
+  status = 200
+  force = true
+
+# Sportmonks: All livescores
+[[redirects]]
+  from = "/api/sportmonks/livescores"
+  to = "https://api.sportmonks.com/v3/football/livescores?api_token=${SPORTMONKS_API_KEY}"
+  status = 200
+  force = true
+
+# Sportmonks: Fixture by ID
+[[redirects]]
+  from = "/api/sportmonks/fixtures/:id"
+  to = "https://api.sportmonks.com/v3/football/fixtures/:id?api_token=${SPORTMONKS_API_KEY}"
+  status = 200
+  force = true
+
+# Sportmonks: Fixtures by date
+[[redirects]]
+  from = "/api/sportmonks/fixtures/date/:date"
+  to = "https://api.sportmonks.com/v3/football/fixtures/date/:date?api_token=${SPORTMONKS_API_KEY}"
+  status = 200
+  force = true
+
+# Sportmonks: Standings
+[[redirects]]
+  from = "/api/sportmonks/standings/seasons/:seasonId"
+  to = "https://api.sportmonks.com/v3/football/standings/seasons/:seasonId?api_token=${SPORTMONKS_API_KEY}"
+  status = 200
+  force = true
+
+# Sportmonks: Teams
+[[redirects]]
+  from = "/api/sportmonks/teams/:id"
+  to = "https://api.sportmonks.com/v3/football/teams/:id?api_token=${SPORTMONKS_API_KEY}"
+  status = 200
+  force = true
+
+# Sportmonks: Leagues
+[[redirects]]
+  from = "/api/sportmonks/leagues"
+  to = "https://api.sportmonks.com/v3/football/leagues?api_token=${SPORTMONKS_API_KEY}"
+  status = 200
+  force = true
+
+# Sportmonks: Odds
+[[redirects]]
+  from = "/api/sportmonks/odds/fixtures/:fixtureId"
+  to = "https://api.sportmonks.com/v3/odds/fixtures/:fixtureId?api_token=${SPORTMONKS_API_KEY}"
+  status = 200
+  force = true
+
+# SPA catch-all (MUST be last)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -1,0 +1,28 @@
+# Development and testing files
+scripts/local-api-server.ts
+scripts/test-api-endpoints.ts
+.same/
+docs/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__/
+coverage/
+
+# Environment files (use Vercel Dashboard for env vars)
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+node_modules/
+.turbo/
+.vercel/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

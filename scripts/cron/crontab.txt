@@ -1,0 +1,56 @@
+# ============================================================
+# LIVEPRO FOOTBALL TERMINAL
+# Cron Configuration
+# ARCHITECTURE_FREEZE_V1
+# ============================================================
+#
+# 安装方法:
+#   crontab scripts/cron/crontab.txt
+#
+# 或手动添加:
+#   crontab -e
+#
+# 注意: 所有时间为 UTC
+# ============================================================
+
+# 环境变量
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+API_FOOTBALL_KEY=your_api_key_here
+SUPABASE_URL=your_supabase_url_here
+SUPABASE_SERVICE_KEY=your_service_key_here
+
+# ============================================================
+# 每日任务
+# ============================================================
+
+# 每日增量更新 - UTC 00:00 (北京时间 08:00)
+# 更新今日比赛、积分榜、球队统计
+0 0 * * * cd /app && bun run scripts/ingest/daily-incremental.ts >> /var/log/livepro/daily.log 2>&1
+
+# 清理旧日志 - 每周日 UTC 02:00
+0 2 * * 0 find /var/log/livepro -name "*.log" -mtime +7 -delete
+
+# ============================================================
+# 实时任务（使用 systemd 或 pm2，不通过 cron）
+# ============================================================
+
+# 实时更新服务应该使用 systemd 或 pm2 持续运行
+# 参见 .same/RATE_LIMITING_STRATEGY.md 中的配置说明
+
+# ============================================================
+# 备份任务
+# ============================================================
+
+# 每日数据库备份 - UTC 03:00
+# 0 3 * * * pg_dump $DATABASE_URL | gzip > /backup/livepro_$(date +\%Y\%m\%d).sql.gz
+
+# ============================================================
+# 监控任务
+# ============================================================
+
+# 每小时检查服务状态
+0 * * * * curl -s http://localhost:3000/api/health >> /var/log/livepro/health.log 2>&1
+
+# 每天发送使用报告
+0 23 * * * cd /app && bun run scripts/report/daily-usage.ts 2>&1 | mail -s "LivePro Daily Report" admin@example.com
