@@ -137,24 +137,12 @@ export function HomePage() {
   const { data: matchesData, isLoading, error, refetch, liveMatches } = useLiveMatchesAdvanced();
   const refreshMatches = useRefreshMatches();
 
-  // 赔率诊断：页面收到的 liveMatches 中前 3 场的 odds 字段
+  // 简单统计：liveMatches 总数与有赔率数量
   useEffect(() => {
     const list = liveMatches ?? [];
     if (list.length === 0) return;
     const withOdds = list.filter((m) => m.odds?._fetch_status === 'SUCCESS');
-    console.log('[ODDS_DIAG] HomePage 收到的 liveMatches:', {
-      总数: list.length,
-      有赔率数量: withOdds.length,
-    });
-    const first3 = list.slice(0, 3);
-    first3.forEach((m, i) => {
-      const o = m.odds;
-      console.log(`[ODDS_DIAG] HomePage 第${i + 1} 场 id=${m.id} ${m.home?.name ?? '?'} vs ${m.away?.name ?? '?'} odds:`, {
-        _fetch_status: o?._fetch_status,
-        handicap: o?.handicap ? { value: o.handicap.value, home: o.handicap.home, away: o.handicap.away } : null,
-        overUnder: o?.overUnder ? { total: o.overUnder.total, over: o.overUnder.over, under: o.overUnder.under } : null,
-      });
-    });
+    console.log('[ODDS_DIAG] liveMatches 总数:', list.length, '有赔率:', withOdds.length);
   }, [liveMatches]);
 
   // 是否使用新表格 V2

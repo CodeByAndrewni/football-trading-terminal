@@ -229,26 +229,6 @@ export function useLiveMatchesAdvanced(options?: {
     String(m.status).toLowerCase() === 'live'
   );
 
-  // 赔率诊断：检查 hook 返回的数据是否包含赔率（AdvancedMatch 使用 odds 字段，无 liveOdds）
-  if (matches.length > 0) {
-    const withOdds = matches.filter((m) => m.odds?._fetch_status === 'SUCCESS');
-    const firstWithOdds = withOdds[0];
-    console.log('[ODDS_DIAG] useMatches 返回数据:', {
-      总比赛数: matches.length,
-      有赔率的比赛数: withOdds.length,
-      有赔率比例: `${withOdds.length}/${matches.length}`,
-      首条有赔率比赛的赔率结构: firstWithOdds ? {
-        _fetch_status: firstWithOdds.odds?._fetch_status,
-        handicap_value: firstWithOdds.odds?.handicap?.value,
-        handicap_home: firstWithOdds.odds?.handicap?.home,
-        handicap_away: firstWithOdds.odds?.handicap?.away,
-        overUnder_total: firstWithOdds.odds?.overUnder?.total,
-        overUnder_over: firstWithOdds.odds?.overUnder?.over,
-        overUnder_under: firstWithOdds.odds?.overUnder?.under,
-      } : null,
-    });
-  }
-
   return { ...query, liveMatches };
 }
 

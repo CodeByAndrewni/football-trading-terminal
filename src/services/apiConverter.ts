@@ -448,9 +448,6 @@ export function convertApiMatchToAdvanced(
     liveOddsLength: liveOdds?.length ?? 0,
     firstItem: liveOddsStructure,
   });
-  if (liveOddsStructure) {
-    console.log('[ODDS_DIAG] liveOdds 数据结构(首条):', liveOddsStructure);
-  }
 
   // 🔥 调用 parseLiveOdds 并打印结果
   let liveOddsData: ReturnType<typeof parseLiveOdds> | null = null;
@@ -470,17 +467,7 @@ export function convertApiMatchToAdvanced(
   // 判断是否有有效的滚球赔率
   const hasLiveOdds = !!(liveOddsData && liveOddsData._raw_available);
 
-  // 🔥 DEBUG: parseLiveOdds 返回结果 + 诊断用解析值汇总
-  const parsedSummary = liveOddsData ? {
-    mainOULine: liveOddsData.main_ou_line,
-    mainOUOver: liveOddsData.main_ou_over,
-    mainOUUnder: liveOddsData.main_ou_under,
-    ahLine: liveOddsData.asian_handicap_line,
-    ahHome: liveOddsData.asian_handicap_home,
-    ahAway: liveOddsData.asian_handicap_away,
-    _fetch_status: liveOddsData._fetch_status,
-    _raw_available: liveOddsData._raw_available,
-  } : null;
+  // 🔥 DEBUG: parseLiveOdds 返回结果
   console.log(`[ODDS_DEBUG_2] fixture=${fixtureId} | parseLiveOdds result:`, {
     hasLiveOdds,
     rawAvailable: liveOddsData?._raw_available,
@@ -488,9 +475,6 @@ export function convertApiMatchToAdvanced(
     mainOULine: liveOddsData?.main_ou_line,
     ahLine: liveOddsData?.asian_handicap_line,
   });
-  if (parsedSummary) {
-    console.log(`[ODDS_DIAG] fixture=${fixtureId} 解析后赔率:`, parsedSummary);
-  }
 
   // 🔥 修复：从赛前赔率解析完整的赔率数据作为回退（使用正确的类型）
   const prematchOddsData = prematchOdds && prematchOdds.length > 0 ? parseLiveOdds(prematchOdds[0], minute) : null;
@@ -709,20 +693,6 @@ export function convertApiMatchesToAdvanced(
   prematchOddsMap?: Map<number, OddsData[]>
 ): AdvancedMatch[] {
   const results: AdvancedMatch[] = [];
-  const oddsMapSize = oddsMap?.size ?? 0;
-  const prematchSize = prematchOddsMap?.size ?? 0;
-  let withLiveOddsCount = 0;
-  for (const m of matches) {
-    const fid = m.fixture?.id;
-    if (fid && oddsMap?.get(fid)?.length) withLiveOddsCount++;
-  }
-  console.log('[ODDS_DIAG] convertApiMatchesToAdvanced 入参:', {
-    比赛数: matches.length,
-    oddsMap条数: oddsMapSize,
-    prematchOddsMap条数: prematchSize,
-    有liveOdds的比赛数: withLiveOddsCount,
-  });
-
   for (const match of matches) {
     const fixtureId = match.fixture?.id;
     if (!fixtureId) continue;

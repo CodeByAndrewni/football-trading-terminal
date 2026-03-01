@@ -840,7 +840,6 @@ export async function getLiveMatchesAdvanced(options?: GetLiveMatchesAdvancedOpt
     // 先创建基础的 AdvancedMatch 数据（赔率/统计字段为空 - 传入空 Map 故无 liveOdds）
     const emptyOddsMap = new Map();
     const emptyPrematchMap = new Map();
-    console.log('[ODDS_DIAG] getLiveMatchesAdvanced: 使用空 oddsMap 转换，返回的数据不包含赔率');
     const initialMatches = convertApiMatchesToAdvanced(matches, statisticsMap, eventsMap, lineupsMap, emptyOddsMap, emptyPrematchMap);
 
     console.log(`[MATCHES] Converted to ${initialMatches.length} AdvancedMatch objects (without odds/stats yet)`);
