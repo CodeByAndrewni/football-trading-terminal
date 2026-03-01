@@ -246,7 +246,13 @@ export function useLiveMatchesAdvanced(options?: {
     },
   });
 
-  return query;
+  const matches = query.data?.matches ?? [];
+  const liveMatches = matches.filter((m) =>
+    ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes((m.status as unknown as { short: string })?.short?.toUpperCase())
+  );
+  console.log('[MATCHES_FILTERED] liveMatches=', liveMatches.length, 'allMatches=', matches.length);
+
+  return { ...query, liveMatches };
 }
 
 /**

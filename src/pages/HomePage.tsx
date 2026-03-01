@@ -134,7 +134,7 @@ export function HomePage() {
   });
 
   // 数据获取
-  const { data: matchesData, isLoading, error, refetch } = useLiveMatchesAdvanced();
+  const { data: matchesData, isLoading, error, refetch, liveMatches } = useLiveMatchesAdvanced();
   const refreshMatches = useRefreshMatches();
 
   // 是否使用新表格 V2
@@ -145,7 +145,7 @@ export function HomePage() {
 
   // 处理比赛数据 - 过滤已结束比赛，保存到历史
   const processedMatches = useMemo(() => {
-    const all = matchesData?.matches ?? [];
+    const all = liveMatches;
 
     // 🔥 CRITICAL: 调试日志 - 追踪数据流
     console.log('[MATCHES_VIEW] Raw data from hook:', {
@@ -307,7 +307,7 @@ export function HomePage() {
     }
 
     return filtered;
-  }, [matchesData, filters, scannerConfig]);
+  }, [liveMatches, filters, scannerConfig]);
 
   // Phase 2: 扫描器结果
   const scannerResults = useMemo(() => {
@@ -342,7 +342,7 @@ export function HomePage() {
 
   // 统计数据
   const stats = useMemo(() => {
-    const all = matchesData?.matches ?? [];
+    const all = liveMatches;
     const withScores = all.map(m => {
       let scoreResult: ScoreResult | null = null;
       try {
@@ -375,7 +375,7 @@ export function HomePage() {
       // Phase 2: 扫描命中数
       scannerHits: 0, // 会在 scannerResults 中更新
     };
-  }, [matchesData]);
+  }, [liveMatches]);
 
   // Phase 2: 更新扫描命中统计
   const statsWithScanner = useMemo(() => ({
@@ -404,13 +404,13 @@ export function HomePage() {
   const apiStatus = getApiStatusDisplay(matchesData, isLoading, error);
 
   // 数据质量：有真实数据的比赛比例
-  const totalMatches = matchesData?.matches?.length ?? 0;
-  const scorableMatches = (matchesData?.matches ?? []).filter((m: AdvancedMatch) => !m._unscoreable).length;
+  const totalMatches = liveMatches.length;
+  const scorableMatches = liveMatches.filter((m: AdvancedMatch) => !m._unscoreable).length;
   const dataQuality = totalMatches > 0 ? Math.round((scorableMatches / totalMatches) * 100) : 0;
 
   // 赔率覆盖率统计（从 meta 或本地计算）
   const oddsCoverage = useMemo(() => {
-    const matches = matchesData?.matches ?? [];
+    const matches = liveMatches;
     const meta = matchesData?.meta;
 
     // 优先使用 meta 中的统计（后端计算）
@@ -447,7 +447,7 @@ export function HomePage() {
       overUnder: withOverUnder,
       ouRate,
     };
-  }, [matchesData, totalMatches]);
+  }, [liveMatches, totalMatches]);
 
   return (
     <div className="h-screen bg-[#0a0a0a] text-[#e0e0e0] font-sans flex flex-col overflow-hidden select-none">
