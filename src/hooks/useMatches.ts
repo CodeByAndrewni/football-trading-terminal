@@ -248,14 +248,8 @@ export function useLiveMatchesAdvanced(options?: {
 
   const matches = query.data?.matches ?? [];
   if (matches.length > 0) {
-    console.log('[RAW_MATCHES_SAMPLE] first 3 matches status field:',
-      matches.slice(0, 3).map(m => ({
-        id: m.id,
-        status: m.status,
-        status_type: typeof m.status,
-        status_json: JSON.stringify(m.status),
-      }))
-    );
+    const uniqueStatuses = [...new Set(matches.map(m => JSON.stringify(m.status)))];
+    console.log('[RAW_MATCHES_SAMPLE] unique status values (all matches):', uniqueStatuses);
   }
   const liveMatches = matches.filter((m) =>
     ['1H', '2H', 'HT', 'ET', 'BT', 'P'].includes((m.status as unknown as { short: string })?.short?.toUpperCase())
