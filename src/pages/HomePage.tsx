@@ -139,8 +139,9 @@ export function HomePage() {
 
   // 简单统计：liveMatches 总数与有赔率数量
   useEffect(() => {
+    console.log('[DEBUG] useEffect 触发了，liveMatches:', liveMatches);
+    if (!liveMatches) return;
     const list = liveMatches ?? [];
-    if (list.length === 0) return;
     const withOdds = list.filter((m) => m.odds?._fetch_status === 'SUCCESS');
     console.log('[ODDS_DIAG] liveMatches 总数:', list.length, '有赔率:', withOdds.length);
   }, [liveMatches]);
