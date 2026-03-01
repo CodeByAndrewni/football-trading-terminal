@@ -137,7 +137,7 @@ export function HomePage() {
   const { data: matchesData, isLoading, error, refetch, liveMatches } = useLiveMatchesAdvanced();
   const refreshMatches = useRefreshMatches();
 
-  // 赔率诊断：页面收到的 liveMatches 中有多少条包含有效赔率
+  // 赔率诊断：页面收到的 liveMatches 中前 3 场的 odds 字段
   useEffect(() => {
     const list = liveMatches ?? [];
     if (list.length === 0) return;
@@ -145,7 +145,15 @@ export function HomePage() {
     console.log('[ODDS_DIAG] HomePage 收到的 liveMatches:', {
       总数: list.length,
       有赔率数量: withOdds.length,
-      首条有赔率: withOdds[0] ? { id: withOdds[0].id, ou: withOdds[0].odds?.overUnder?.total, ah: withOdds[0].odds?.handicap?.value } : null,
+    });
+    const first3 = list.slice(0, 3);
+    first3.forEach((m, i) => {
+      const o = m.odds;
+      console.log(`[ODDS_DIAG] HomePage 第${i + 1} 场 id=${m.id} ${m.home?.name ?? '?'} vs ${m.away?.name ?? '?'} odds:`, {
+        _fetch_status: o?._fetch_status,
+        handicap: o?.handicap ? { value: o.handicap.value, home: o.handicap.home, away: o.handicap.away } : null,
+        overUnder: o?.overUnder ? { total: o.overUnder.total, over: o.overUnder.over, under: o.overUnder.under } : null,
+      });
     });
   }, [liveMatches]);
 

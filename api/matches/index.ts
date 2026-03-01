@@ -193,6 +193,18 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
       matchesWithStats,
     };
 
+    // 赔率数据流诊断：确认写入 KV 前首条带 odds
+    const firstForKv = matches[0] as { id?: number; odds?: { overUnder?: { total?: number | null }; handicap?: { value?: number | null }; _fetch_status?: string } } | undefined;
+    if (firstForKv) {
+      console.log('[ODDS_LOG] 即将写入 KV 首条:', {
+        id: firstForKv.id,
+        hasOdds: !!firstForKv.odds,
+        _fetch_status: firstForKv.odds?._fetch_status,
+        overUnder_total: firstForKv.odds?.overUnder?.total,
+        handicap_value: firstForKv.odds?.handicap?.value,
+      });
+    }
+
     await saveMatches(matches, meta);
     await incrementApiCalls(apiCallsThisCycle);
 

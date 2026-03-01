@@ -154,6 +154,16 @@ export async function releaseLock(lockKey: string): Promise<boolean> {
  */
 export async function saveMatches(matches: unknown[], meta: RefreshMeta): Promise<boolean> {
   try {
+    // 赔率数据流诊断：确认写入 KV 时 odds 未丢失
+    const first = matches[0] as { id?: number; odds?: Record<string, unknown> } | undefined;
+    if (first) {
+      const hasOdds = !!first.odds;
+      const oddsKeys = first.odds ? Object.keys(first.odds) : [];
+      const ouTotal = first.odds?.overUnder && typeof (first.odds.overUnder as Record<string, unknown>).total !== 'undefined' ? (first.odds.overUnder as Record<string, unknown>).total : null;
+      const ahValue = first.odds?.handicap && typeof (first.odds.handicap as Record<string, unknown>).value !== 'undefined' ? (first.odds.handicap as Record<string, unknown>).value : null;
+      console.log('[KV_ODDS] saveMatches 写入前 首条:', { id: first.id, hasOdds, oddsKeys, overUnder_total: ouTotal, handicap_value: ahValue });
+    }
+
     const [matchesResult, metaResult] = await Promise.all([
       kvSet(KV_KEYS.matches, {
         matches,
@@ -187,6 +197,16 @@ export async function getMatches(): Promise<{
     }
 
     const cacheAge = Math.floor((Date.now() - matchesCache.timestamp) / 1000);
+
+    // 赔率数据流诊断：确认从 KV 读出时 odds 完整
+    const first = (matchesCache.matches as unknown[])?.[0] as { id?: number; odds?: Record<string, unknown> } | undefined;
+    if (first) {
+      const hasOdds = !!first.odds;
+      const oddsKeys = first.odds ? Object.keys(first.odds) : [];
+      const ouTotal = first.odds?.overUnder && typeof (first.odds.overUnder as Record<string, unknown>).total !== 'undefined' ? (first.odds.overUnder as Record<string, unknown>).total : null;
+      const ahValue = first.odds?.handicap && typeof (first.odds.handicap as Record<string, unknown>).value !== 'undefined' ? (first.odds.handicap as Record<string, unknown>).value : null;
+      console.log('[KV_ODDS] getMatches 读出后 首条:', { id: first.id, hasOdds, oddsKeys, overUnder_total: ouTotal, handicap_value: ahValue });
+    }
 
     return {
       matches: matchesCache.matches,
