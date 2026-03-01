@@ -174,14 +174,14 @@ export function HomePage() {
     });
 
     // 分离已结束和进行中的比赛
-    const liveMatches: MatchWithScore[] = [];
+    const liveWithScores: MatchWithScore[] = [];
     const finishedMatches: MatchWithScore[] = [];
 
     for (const match of withScores) {
       if (finishedStatuses.includes(match.status)) {
         finishedMatches.push(match);
       } else {
-        liveMatches.push(match);
+        liveWithScores.push(match);
       }
     }
 
@@ -190,7 +190,7 @@ export function HomePage() {
       addToHistory(match, match.scoreResult);
     }
 
-    let filtered = liveMatches;
+    let filtered = liveWithScores;
 
     // 联赛筛选
     if (filters.league !== 'ALL') {
