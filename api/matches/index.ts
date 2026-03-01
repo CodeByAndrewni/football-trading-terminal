@@ -94,6 +94,45 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
       }),
     ]);
 
+    // ----- 赔率诊断：API 原始返回 -----
+    const liveOddsEntries = Array.from(liveOddsMap.entries());
+    const withLiveOddsCount = liveOddsEntries.filter(([, arr]) => arr && arr.length > 0 && arr[0].odds?.length > 0).length;
+    const prematchEntries = Array.from(prematchOddsMap.entries());
+    const withPrematchCount = prematchEntries.filter(([, arr]) => arr && arr.length > 0).length;
+    console.log('[ODDS_LOG] 赔率 API 返回统计:', {
+      总比赛数: fixtureIds.length,
+      有滚球赔率的比赛数: withLiveOddsCount,
+      有赛前赔率的比赛数: withPrematchCount,
+    });
+    // 前 2 条滚球赔率原始结构
+    for (let i = 0; i < Math.min(2, liveOddsEntries.length); i++) {
+      const [fid, arr] = liveOddsEntries[i];
+      const first = arr?.[0];
+      console.log(`[ODDS_LOG] 滚球赔率原始 第${i + 1} 条 fixture=${fid}:`, {
+        hasData: !!first,
+        fixtureId: first?.fixture?.id,
+        oddsArrayLength: first?.odds?.length ?? 0,
+        marketIds: first?.odds?.map(o => o.id) ?? [],
+        firstMarketSample: first?.odds?.[0] ? {
+          id: first.odds[0].id,
+          name: first.odds[0].name,
+          valuesLength: first.odds[0].values?.length ?? 0,
+          valuesSample: (first.odds[0].values ?? []).slice(0, 3),
+        } : null,
+      });
+    }
+    // 前 2 条赛前赔率原始结构（OddsData 为单条 response，含 bookmakers 数组）
+    for (let i = 0; i < Math.min(2, prematchEntries.length); i++) {
+      const [fid, arr] = prematchEntries[i];
+      const first = arr?.[0] as { bookmakers?: Array<{ id: number; name: string; bets?: unknown[] }> } | undefined;
+      console.log(`[ODDS_LOG] 赛前赔率原始 第${i + 1} 条 fixture=${fid}:`, {
+        hasData: !!first,
+        responseLength: arr?.length ?? 0,
+        bookmakersLength: first?.bookmakers?.length ?? 0,
+        firstBookmaker: first?.bookmakers?.[0] ? { id: first.bookmakers[0].id, name: first.bookmakers[0].name, betsLength: first.bookmakers[0].bets?.length ?? 0 } : null,
+      });
+    }
+
     // 4. 聚合数据
     const matches = aggregateMatches(
       fixtures,
@@ -120,6 +159,19 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
     const matchesWithOverUnder = matches.filter(m =>
       m.odds?.overUnder?.total !== null && m.odds?.overUnder?.over !== null
     ).length;
+
+    // ----- 赔率诊断：解析后的赔率结构（前 2 条有赔率的比赛）-----
+    const withOdds = matches.filter((m: { odds?: { _fetch_status?: string } }) => m.odds?._fetch_status === 'SUCCESS');
+    console.log('[ODDS_LOG] 解析后统计:', { 有任意赔率: matchesWithAnyOdds, 有大小球: matchesWithOverUnder, 总比赛数: matches.length });
+    for (let i = 0; i < Math.min(2, withOdds.length); i++) {
+      const m = withOdds[i] as { id: number; home?: { name?: string }; away?: { name?: string }; odds?: { handicap?: { value?: number | null; home?: number | null; away?: number | null }; overUnder?: { total?: number | null; over?: number | null; under?: number | null }; _fetch_status?: string } };
+      const o = m.odds;
+      console.log(`[ODDS_LOG] 解析后赔率 第${i + 1} 场 id=${m.id} ${m.home?.name ?? '?'} vs ${m.away?.name ?? '?'}:`, {
+        handicap: o?.handicap ? { value: o.handicap.value, home: o.handicap.home, away: o.handicap.away } : null,
+        overUnder: o?.overUnder ? { total: o.overUnder.total, over: o.overUnder.over, under: o.overUnder.under } : null,
+        _fetch_status: o?._fetch_status,
+      });
+    }
 
     const matchesWithStats = matches.filter(m =>
       m.stats?._realDataAvailable === true
