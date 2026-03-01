@@ -189,7 +189,7 @@ export function useLiveMatchesAdvanced(options?: {
         // 🔥 详细调试日志
         if (apiMatches.length > 0) {
           const withOdds = apiMatches.filter(m => m.odds?._fetch_status === 'SUCCESS');
-          const withStats = apiMatches.filter(m => m._realDataAvailable === true);
+          const withStats = apiMatches.filter(m => m.stats !== null);
 
           console.log(`[useMatches] Data status: odds=${withOdds.length}/${apiMatches.length}, stats=${withStats.length}/${apiMatches.length}`);
 
@@ -202,7 +202,7 @@ export function useLiveMatchesAdvanced(options?: {
               minute: m.minute,
               score: `${m.home.score}-${m.away.score}`,
               hasOdds: m.odds?._fetch_status === 'SUCCESS',
-              hasStats: m._realDataAvailable === true,
+              hasStats: m.stats !== null,
             });
           }
         }
