@@ -145,16 +145,7 @@ export function HomePage() {
 
   // 处理比赛数据 - 过滤已结束比赛，保存到历史
   const processedMatches = useMemo(() => {
-    const all = liveMatches;
-
-    // 🔥 CRITICAL: 调试日志 - 追踪数据流
-    console.log('[MATCHES_VIEW] Raw data from hook:', {
-      hasMatchesData: !!matchesData,
-      matchesCount: all.length,
-      isLoading,
-      hasError: !!error,
-      dataSource: matchesData?.dataSource,
-    });
+    const all = liveMatches ?? [];
 
     // 定义已结束状态
     const finishedStatuses = ['FT', 'AET', 'PEN', '完场', '已结束'];
@@ -286,26 +277,6 @@ export function HomePage() {
       });
     }
 
-    // 🔥 CRITICAL: 调试日志 - 最终渲染数据
-    console.log('[MATCHES_VIEW] Processed matches:', {
-      totalRaw: all.length,
-      afterFiltering: filtered.length,
-      filters: {
-        league: filters.league,
-        minMinute: filters.minMinute,
-        showAll: filters.showAll,
-        scannerMode: filters.scannerMode,
-      },
-    });
-
-    if (filtered.length > 0) {
-      console.log('[MATCHES_VIEW] ✅ Rendering', filtered.length, 'matches to UI');
-    } else if (all.length > 0) {
-      console.log('[MATCHES_VIEW] ⚠️ All matches filtered out by current filters');
-    } else {
-      console.log('[MATCHES_VIEW] ⚠️ No raw matches available');
-    }
-
     return filtered;
   }, [liveMatches, filters, scannerConfig]);
 
@@ -342,7 +313,7 @@ export function HomePage() {
 
   // 统计数据
   const stats = useMemo(() => {
-    const all = liveMatches;
+    const all = liveMatches ?? [];
     const withScores = all.map(m => {
       let scoreResult: ScoreResult | null = null;
       try {
@@ -404,13 +375,14 @@ export function HomePage() {
   const apiStatus = getApiStatusDisplay(matchesData, isLoading, error);
 
   // 数据质量：有真实数据的比赛比例
-  const totalMatches = liveMatches.length;
-  const scorableMatches = liveMatches.filter((m: AdvancedMatch) => !m._unscoreable).length;
+  const safeLiveMatches = liveMatches ?? [];
+  const totalMatches = safeLiveMatches.length;
+  const scorableMatches = safeLiveMatches.filter((m: AdvancedMatch) => !m._unscoreable).length;
   const dataQuality = totalMatches > 0 ? Math.round((scorableMatches / totalMatches) * 100) : 0;
 
   // 赔率覆盖率统计（从 meta 或本地计算）
   const oddsCoverage = useMemo(() => {
-    const matches = liveMatches;
+    const matches = liveMatches ?? [];
     const meta = matchesData?.meta;
 
     // 优先使用 meta 中的统计（后端计算）

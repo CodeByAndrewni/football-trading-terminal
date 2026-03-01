@@ -140,7 +140,6 @@ export function useLiveMatchesAdvanced(options?: {
 
           // 检查是否正在初始化
           if (isInitializing(result.meta)) {
-            console.log('[useMatches] Aggregator initializing, waiting...');
             return {
               matches: [],
               dataSource: 'aggregated',
@@ -149,9 +148,8 @@ export function useLiveMatchesAdvanced(options?: {
             };
           }
 
-          // 检查缓存是否陈旧
           if (isCacheStale(result.meta)) {
-            console.warn('[useMatches] Aggregator cache is stale');
+            // 缓存陈旧，继续使用当前数据
           }
 
           const mergedMatches = mergeMatches(previousMatchesRef.current, result.matches);
@@ -164,11 +162,9 @@ export function useLiveMatchesAdvanced(options?: {
           };
 
         } catch (error) {
-          console.error('[useMatches] Aggregator failed:', error);
-
           // 如果允许 fallback，尝试旧模式
           if (FALLBACK_TO_LEGACY) {
-            console.log('[useMatches] Falling back to legacy API...');
+            // fallback to legacy
           } else {
             return {
               matches: [],
@@ -181,46 +177,17 @@ export function useLiveMatchesAdvanced(options?: {
 
       // Fallback: 使用旧的直连模式
       try {
-        console.log('[useMatches] Calling getLiveMatchesAdvancedLegacy...');
         const apiMatches = await getLiveMatchesAdvancedLegacy();
 
-        console.log(`[useMatches] ✅ Received ${apiMatches.length} matches from API-Football`);
-
-        // 🔥 详细调试日志
-        if (apiMatches.length > 0) {
-          const withOdds = apiMatches.filter(m => m.odds?._fetch_status === 'SUCCESS');
-          const withStats = apiMatches.filter(m => m.stats !== null);
-
-          console.log(`[useMatches] Data status: odds=${withOdds.length}/${apiMatches.length}, stats=${withStats.length}/${apiMatches.length}`);
-
-          // 打印前3个比赛的详细信息
-          for (let i = 0; i < Math.min(3, apiMatches.length); i++) {
-            const m = apiMatches[i];
-            console.log(`[useMatches] Match ${i + 1}: ${m.home.name} vs ${m.away.name}`, {
-              id: m.id,
-              status: m.status,
-              minute: m.minute,
-              score: `${m.home.score}-${m.away.score}`,
-              hasOdds: m.odds?._fetch_status === 'SUCCESS',
-              hasStats: m.stats !== null,
-            });
-          }
-        }
-
-        // 🔥 CRITICAL: 返回所有比赛，即使没有赔率/统计
         if (apiMatches.length > 0) {
           const mergedMatches = mergeMatches(previousMatchesRef.current, apiMatches);
           previousMatchesRef.current = mergedMatches;
-
-          console.log(`[useMatches] ✅ Returning ${mergedMatches.length} matches to UI`);
           return { matches: mergedMatches, dataSource: 'api' };
         }
 
-        console.log('[useMatches] ⚠️ No live matches from API-Football');
         return { matches: [], dataSource: 'none', error: 'NO_LIVE_MATCHES' };
 
       } catch (error) {
-        console.error('[useMatches] ❌ API request failed:', error);
         return {
           matches: [],
           dataSource: 'none',
@@ -229,7 +196,7 @@ export function useLiveMatchesAdvanced(options?: {
       }
     },
     staleTime: 10 * 1000,
-    refetchInterval: options?.refetchInterval ?? 15 * 1000,
+    refetchInterval: options?.refetchInterval ?? refetchIntervals.liveMatches,
     enabled: options?.enabled ?? true,
     structuralSharing: (oldData, newData) => {
       if (!oldData) return newData;
@@ -247,12 +214,12 @@ export function useLiveMatchesAdvanced(options?: {
   });
 
   const matches = query.data?.matches ?? [];
-  if (matches.length > 0) {
-    const uniqueStatuses = [...new Set(matches.map(m => JSON.stringify(m.status)))];
-    console.log('[RAW_MATCHES_SAMPLE] unique status values (all matches):', uniqueStatuses);
-  }
-  const liveMatches = matches.filter((m) => m.status === 'live');
-  console.log('[MATCHES_FILTERED] liveMatches=', liveMatches.length, 'allMatches=', matches.length);
+  // 排除加时赛（120' 及以后）
+  const noOvertime = matches.filter((m) => (m.minute ?? 0) < 120);
+  // 只保留真正进行中的比赛：status === 'live'，排除 ft/ns/ht
+  const liveMatches: AdvancedMatch[] = noOvertime.filter((m) =>
+    String(m.status).toLowerCase() === 'live'
+  );
 
   return { ...query, liveMatches };
 }
@@ -283,7 +250,6 @@ export function useTodayMatchesAdvanced(options?: {
           return { matches: mergedMatches, dataSource: 'api' };
         }
 
-        console.log('[useMatches] No today matches from API-Football');
         return { matches: [], dataSource: 'none', error: 'NO_TODAY_MATCHES' };
 
       } catch (error) {
@@ -328,7 +294,6 @@ export function useMatchAdvanced(matchId: number | undefined, options?: {
           return { match, dataSource: 'api' as DataSource };
         }
 
-        console.log(`[useMatches] Match ${matchId} not found`);
         return null;
 
       } catch (error) {
