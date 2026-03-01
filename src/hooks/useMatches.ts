@@ -39,12 +39,10 @@ import type { Match, TeamStatistics, MatchEvent, Lineup } from '../types';
 // ============================================
 
 /**
- * 是否使用后端聚合模式
- * 设置为 true 使用新架构，false 使用旧的直连模式
- *
- * 🔧 临时禁用：Same 平台不支持 serverless functions
+ * 是否使用后端聚合模式（Vercel /api/matches + KV）
+ * true = 生产环境走 Vercel API，本地开发由 isAggregatorAvailable() 返回 false 自动走直连
  */
-const USE_AGGREGATED_API = false;
+const USE_AGGREGATED_API = true;
 
 /**
  * 当聚合 API 失败时是否 fallback 到旧模式
@@ -128,6 +126,7 @@ export function useLiveMatchesAdvanced(options?: {
   enabled?: boolean;
   refetchInterval?: number | false;
 }) {
+  const queryClient = useQueryClient();
   const previousMatchesRef = useRef<AdvancedMatch[] | undefined>(undefined);
 
   const query = useQuery({
@@ -175,9 +174,18 @@ export function useLiveMatchesAdvanced(options?: {
         }
       }
 
-      // Fallback: 使用旧的直连模式
+      // Fallback: 使用旧的直连模式；赔率加载完成后通过 onOddsLoaded 更新缓存
       try {
-        const apiMatches = await getLiveMatchesAdvancedLegacy();
+        const apiMatches = await getLiveMatchesAdvancedLegacy({
+          onOddsLoaded: (matchesWithOdds) => {
+            const merged = mergeMatches(previousMatchesRef.current, matchesWithOdds);
+            previousMatchesRef.current = merged;
+            queryClient.setQueryData(queryKeys.matches.liveAdvanced(), (prev: MatchesResult | undefined) => {
+              if (!prev) return { matches: merged, dataSource: 'api' };
+              return { ...prev, matches: merged };
+            });
+          },
+        });
 
         if (apiMatches.length > 0) {
           const mergedMatches = mergeMatches(previousMatchesRef.current, apiMatches);
@@ -220,6 +228,26 @@ export function useLiveMatchesAdvanced(options?: {
   const liveMatches: AdvancedMatch[] = noOvertime.filter((m) =>
     String(m.status).toLowerCase() === 'live'
   );
+
+  // 赔率诊断：检查 hook 返回的数据是否包含赔率（AdvancedMatch 使用 odds 字段，无 liveOdds）
+  if (matches.length > 0) {
+    const withOdds = matches.filter((m) => m.odds?._fetch_status === 'SUCCESS');
+    const firstWithOdds = withOdds[0];
+    console.log('[ODDS_DIAG] useMatches 返回数据:', {
+      总比赛数: matches.length,
+      有赔率的比赛数: withOdds.length,
+      有赔率比例: `${withOdds.length}/${matches.length}`,
+      首条有赔率比赛的赔率结构: firstWithOdds ? {
+        _fetch_status: firstWithOdds.odds?._fetch_status,
+        handicap_value: firstWithOdds.odds?.handicap?.value,
+        handicap_home: firstWithOdds.odds?.handicap?.home,
+        handicap_away: firstWithOdds.odds?.handicap?.away,
+        overUnder_total: firstWithOdds.odds?.overUnder?.total,
+        overUnder_over: firstWithOdds.odds?.overUnder?.over,
+        overUnder_under: firstWithOdds.odds?.overUnder?.under,
+      } : null,
+    });
+  }
 
   return { ...query, liveMatches };
 }

@@ -18,7 +18,7 @@ export interface MatchesMeta {
   nextRefresh: string | null;
   cacheAge: number;
   apiCallsToday: number;
-  status: 'FRESH' | 'STALE' | 'INITIALIZING';
+  status: 'FRESH' | 'STALE' | 'STALE_REFRESHING' | 'INITIALIZING';
   refreshDuration?: number;
   errors?: string[];
   message?: string;
@@ -168,7 +168,7 @@ export async function fetchAggregatedMatches(): Promise<MatchesResult> {
  * 检查缓存是否陈旧
  */
 export function isCacheStale(meta: MatchesMeta): boolean {
-  return meta.status === 'STALE' || meta.cacheAge > 120;
+  return meta.status === 'STALE' || meta.status === 'STALE_REFRESHING' || meta.cacheAge > 120;
 }
 
 /**

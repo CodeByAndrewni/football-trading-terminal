@@ -714,14 +714,20 @@ export async function getLeaguesByCountry(country: string): Promise<LeagueInfo[]
 // 高级数据获取方法 - 返回 AdvancedMatch 格式
 // ============================================
 
+/** 可选：赔率加载完成后用带赔率的数据更新缓存（由 useMatches 传入 setQueryData） */
+export interface GetLiveMatchesAdvancedOptions {
+  onOddsLoaded?: (matches: AdvancedMatch[]) => void;
+}
+
 /**
  * 获取进行中比赛并转换为 AdvancedMatch 格式
  * 包含完整的统计数据和场景标签
  * Phase 1.5: 现在也获取 live odds
  * Phase 2.5: 使用优化的批处理获取赔率
  * Phase 3.0: 添加赛前赔率获取 (prematch odds) 用于 strong_behind 检测
+ * 赔率加载完成后会调用 onOddsLoaded(带赔率的 matches)，调用方可用其更新 React Query 缓存。
  */
-export async function getLiveMatchesAdvanced(): Promise<AdvancedMatch[]> {
+export async function getLiveMatchesAdvanced(options?: GetLiveMatchesAdvancedOptions): Promise<AdvancedMatch[]> {
   try {
     const startTime = Date.now();
 
@@ -831,12 +837,15 @@ export async function getLiveMatchesAdvanced(): Promise<AdvancedMatch[]> {
     // 🔥 CRITICAL FIX: 立即转换并返回基础数据，不等待赔率/统计完成
     console.log(`[MATCHES] Loaded ${matches.length} live fixtures from API-Football`);
 
-    // 先创建基础的 AdvancedMatch 数据（赔率/统计字段为空）
-    const initialMatches = convertApiMatchesToAdvanced(matches, statisticsMap, eventsMap, lineupsMap, new Map(), new Map());
+    // 先创建基础的 AdvancedMatch 数据（赔率/统计字段为空 - 传入空 Map 故无 liveOdds）
+    const emptyOddsMap = new Map();
+    const emptyPrematchMap = new Map();
+    console.log('[ODDS_DIAG] getLiveMatchesAdvanced: 使用空 oddsMap 转换，返回的数据不包含赔率');
+    const initialMatches = convertApiMatchesToAdvanced(matches, statisticsMap, eventsMap, lineupsMap, emptyOddsMap, emptyPrematchMap);
 
     console.log(`[MATCHES] Converted to ${initialMatches.length} AdvancedMatch objects (without odds/stats yet)`);
 
-    // 4. 后台异步加载赔率和统计（不阻塞返回）
+    // 4. 后台异步加载赔率和统计；完成后用带赔率的数据重新转换并通知调用方更新缓存
     Promise.all([
       liveOddsPromise,
       prematchOddsPromise,
@@ -846,7 +855,6 @@ export async function getLiveMatchesAdvanced(): Promise<AdvancedMatch[]> {
       const totalTime = Date.now() - startTime;
       const cacheStats = getCacheStats();
 
-      // 统计信息
       let oddsWithData = 0;
       for (const [fid, odds] of oddsMap.entries()) {
         if (odds && odds.length > 0 && odds[0].odds?.length > 0) {
@@ -859,6 +867,17 @@ export async function getLiveMatchesAdvanced(): Promise<AdvancedMatch[]> {
       console.log(`[MATCHES_ASYNC] Prematch Odds: fetched=${prematchResult.fetched}, failed=${prematchResult.failed}`);
       console.log(`[MATCHES_ASYNC] Fixtures with odds: ${oddsWithData}/${matches.length}`);
       console.log(`[MATCHES_ASYNC] Cache hit rate: live=${cacheStats.hitRate}, prematch=${cacheStats.prematchHitRate}`);
+
+      // 用真实的 oddsMap / prematchOddsMap 重新转换，得到带赔率的列表并通知调用方更新缓存
+      const matchesWithOdds = convertApiMatchesToAdvanced(
+        matches,
+        statisticsMap,
+        eventsMap,
+        lineupsMap,
+        oddsMap,
+        prematchOddsMap
+      );
+      options?.onOddsLoaded?.(matchesWithOdds);
     }).catch(error => {
       console.error('[MATCHES_ASYNC] Background loading failed:', error);
     });

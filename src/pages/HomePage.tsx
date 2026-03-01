@@ -137,6 +137,18 @@ export function HomePage() {
   const { data: matchesData, isLoading, error, refetch, liveMatches } = useLiveMatchesAdvanced();
   const refreshMatches = useRefreshMatches();
 
+  // 赔率诊断：页面收到的 liveMatches 中有多少条包含有效赔率
+  useEffect(() => {
+    const list = liveMatches ?? [];
+    if (list.length === 0) return;
+    const withOdds = list.filter((m) => m.odds?._fetch_status === 'SUCCESS');
+    console.log('[ODDS_DIAG] HomePage 收到的 liveMatches:', {
+      总数: list.length,
+      有赔率数量: withOdds.length,
+      首条有赔率: withOdds[0] ? { id: withOdds[0].id, ou: withOdds[0].odds?.overUnder?.total, ah: withOdds[0].odds?.handicap?.value } : null,
+    });
+  }, [liveMatches]);
+
   // 是否使用新表格 V2
   const [useTableV2, setUseTableV2] = useState(true);
 
