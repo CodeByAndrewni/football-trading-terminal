@@ -821,13 +821,23 @@ export async function getLiveMatchesAdvanced(options?: GetLiveMatchesAdvancedOpt
               // 始终优先尝试使用缓存
               const cached = getCachedPrematchOdds(fixtureId);
               if (cached !== null && !shouldFetchFromApi) {
+                // 有缓存且当前时间窗口不要求刷新 → 直接使用缓存
                 prematchOddsMap.set(fixtureId, cached);
                 fetched++;
                 return;
               }
 
+              // 如果当前时间窗口本来不允许刷新，但又没有缓存，
+              // 说明这是我们第一次为这场进行中的比赛请求赛前赔率，
+              // 允许进行一次补抓，避免整场比赛都拿不到初盘。
+              if (!shouldFetchFromApi && cached === null) {
+                shouldFetchFromApi = true;
+              }
+
               if (!shouldFetchFromApi) {
-                // 当前时间窗口不允许刷新且无缓存，跳过该场比赛的赛前赔率请求
+                // 既不需要刷新，又已经有缓存的情况上面已 return；
+                // 能走到这里说明有缓存且 shouldFetchFromApi=false，理论上不会发生，
+                // 为安全起见仍然直接返回。
                 return;
               }
 

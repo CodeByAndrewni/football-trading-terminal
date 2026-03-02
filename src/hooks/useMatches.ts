@@ -44,7 +44,7 @@ import type { Match, TeamStatistics, MatchEvent, Lineup } from '../types';
  *
  * 🔧 临时禁用：Same 平台不支持 serverless functions
  */
-const USE_AGGREGATED_API = false;
+const USE_AGGREGATED_API = true;
 
 /**
  * 当聚合 API 失败时是否 fallback 到旧模式
