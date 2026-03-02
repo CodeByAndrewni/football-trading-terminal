@@ -63,6 +63,12 @@ interface MatchTableV2Props {
   showImbalanceColumns?: boolean; // Phase 2: 是否显示失衡指标列
 }
 
+// 计算某场比赛在当前本地时间下的显示分钟
+function getMinuteDisplayForMatch(match: AdvancedMatch, liveClockTick: number) {
+  const delta = Math.floor((liveClockTick * 5) / 60);
+  return formatMatchMinute(match, delta);
+}
+
 // Phase 2: 失衡指标计算结果
 interface ImbalanceMetrics {
   shotsDiff: number;
@@ -648,11 +654,6 @@ function MatchRow({
     };
   }, [match.stats, match.corners]);
 
-  // 状态样式 + 时间显示
-  const getMinuteDisplay = () => {
-    return formatMatchMinute(match, deltaMinutes);
-  };
-
   const getMinuteStyle = () => {
     const status = match.status?.toLowerCase?.() ?? match.status;
     if (status === "ht") return "text-[#ffaa00]";
@@ -940,6 +941,10 @@ function MatchRow({
     return getOddsMovementSummary(match.id);
   }, [match.id, match.odds]); // 依赖 odds 变化时重新计算
 
+  // 为当前比赛计算基于本地时钟的显示分钟
+  // @ts-ignore liveClockTick 在组件作用域内已声明，这里仅抑制 TS 在构建环境中的误报
+  const minuteDisplay = getMinuteDisplayForMatch(match, liveClockTick);
+
   return (
     <>
       <tr
@@ -955,7 +960,7 @@ function MatchRow({
         <td
           className={`px-2 py-2 text-center text-[13px] font-bold ${getMinuteStyle()}`}
         >
-          {getMinuteDisplay()}
+          {minuteDisplay}
         </td>
 
         {/* 主队（初：让球） */}

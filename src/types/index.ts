@@ -35,6 +35,7 @@ export interface FixtureStatus {
   long: string;
   short: string;
   elapsed: number | null;
+  extra?: number | null; // 补时时间（如 1, 2, 3 分钟），允许为 null 或缺失
 }
 
 export interface Fixture {
