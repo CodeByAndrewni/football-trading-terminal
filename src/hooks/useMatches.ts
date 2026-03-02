@@ -276,7 +276,13 @@ export function useLiveMatchesAdvanced(options?: {
     const uniqueStatuses = [...new Set(matches.map(m => JSON.stringify(m.status)))];
     console.log('[RAW_MATCHES_SAMPLE] unique status values (all matches):', uniqueStatuses);
   }
-  const liveMatches = matches.filter((m) => m.status === 'live');
+
+  // 统一“进行中”定义：只排除未开始(NS)和已结束(FT)，
+  // 其余状态（1h/2h/ht/live/aet/pen 等）全部视为进行中，避免列表为空。
+  const liveMatches = matches.filter((m) => {
+    const s = String(m.status).toLowerCase();
+    return s !== 'ns' && s !== 'ft';
+  });
   console.log('[MATCHES_FILTERED] liveMatches=', liveMatches.length, 'allMatches=', matches.length);
 
   return { ...query, liveMatches };
