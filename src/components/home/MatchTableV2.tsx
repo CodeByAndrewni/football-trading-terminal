@@ -63,12 +63,6 @@ interface MatchTableV2Props {
   showImbalanceColumns?: boolean; // Phase 2: 是否显示失衡指标列
 }
 
-// 计算某场比赛在当前本地时间下的显示分钟
-function getMinuteDisplayForMatch(match: AdvancedMatch, liveClockTick: number) {
-  const delta = Math.floor((liveClockTick * 5) / 60);
-  return formatMatchMinute(match, delta);
-}
-
 // Phase 2: 失衡指标计算结果
 interface ImbalanceMetrics {
   shotsDiff: number;
@@ -97,8 +91,6 @@ export function MatchTableV2({
   const navigate = useNavigate();
   const [sortField, setSortField] = useState<"minute" | "score">("score");
   const [sortAsc, setSortAsc] = useState(false);
-  const liveClockTick = useLiveClock(5000);
-  const deltaMinutes = Math.floor((liveClockTick * 5) / 60);
 
   // 内联筛选状态（仅当 showInlineFilters 为 true 时使用）
   const [inlineOddsConfirmed, setInlineOddsConfirmed] = useState(false);
@@ -587,6 +579,8 @@ function MatchRow({
   onViewDetail: () => void;
   showImbalanceColumns?: boolean;
 }) {
+  const liveClockTick = useLiveClock(5000);
+  const deltaMinutes = Math.floor((liveClockTick * 5) / 60);
   const [showDebug, setShowDebug] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
 
@@ -940,10 +934,7 @@ function MatchRow({
   const oddsMovement = useMemo((): OddsMovementSummary | null => {
     return getOddsMovementSummary(match.id);
   }, [match.id, match.odds]); // 依赖 odds 变化时重新计算
-
-  // 为当前比赛计算基于本地时钟的显示分钟
-  // @ts-ignore liveClockTick 在组件作用域内已声明，这里仅抑制 TS 在构建环境中的误报
-  const minuteDisplay = getMinuteDisplayForMatch(match, liveClockTick);
+  const minuteDisplay = formatMatchMinute(match, deltaMinutes);
 
   return (
     <>
