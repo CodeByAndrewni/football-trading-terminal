@@ -41,6 +41,8 @@ import {
   type OddsMovementSummary,
 } from "../../services/oddsHistoryService";
 import { OddsMovementBadge, type OddsMovement } from "../ui/OddsMovementBadge";
+import { useLiveClock } from "../../hooks/useLiveClock";
+import { formatMatchMinute } from "../../utils/matchTime";
 
 // ============================================
 // 筛选配置接口
@@ -89,6 +91,8 @@ export function MatchTableV2({
   const navigate = useNavigate();
   const [sortField, setSortField] = useState<"minute" | "score">("score");
   const [sortAsc, setSortAsc] = useState(false);
+  const liveClockTick = useLiveClock(5000);
+  const deltaMinutes = Math.floor((liveClockTick * 5) / 60);
 
   // 内联筛选状态（仅当 showInlineFilters 为 true 时使用）
   const [inlineOddsConfirmed, setInlineOddsConfirmed] = useState(false);
@@ -644,15 +648,9 @@ function MatchRow({
     };
   }, [match.stats, match.corners]);
 
-  // 状态样式
+  // 状态样式 + 时间显示
   const getMinuteDisplay = () => {
-    const status = match.status?.toLowerCase?.() ?? match.status;
-    if (status === "ht") return "半";
-    if (status === "ns" || status === "未开始") return "未";
-    if (status === "ft") return "完";
-    if (status === "aet") return "加";
-    if (status === "pen") return "点";
-    return `${match.minute}'`;
+    return formatMatchMinute(match, deltaMinutes);
   };
 
   const getMinuteStyle = () => {
@@ -920,27 +918,22 @@ function MatchRow({
 
   // 获取初盘让球显示值 - Phase 2A
   const prematchHandicapDisplay = useMemo(() => {
-    const value = match.home?.handicap;
-    const source = match.home?._handicap_source;
-
-    // 接受 'API' 或 'PREMATCH_API' 作为有效来源
-    if (value === null || value === undefined || !source) {
+    // 优先使用聚合层提供的赛前初盘快照，其次回退到旧直连模式的 home.handicap
+    const value = match.initialHandicap ?? match.home?.handicap ?? null;
+    if (value === null || value === undefined) {
       return null; // 不显示
     }
     return value > 0 ? `+${value}` : String(value);
-  }, [match.home]);
+  }, [match.initialHandicap, match.home]);
 
   // 获取初盘大小球显示值 - Phase 2A
   const prematchOUDisplay = useMemo(() => {
-    const value = match.away?.overUnder;
-    const source = match.away?._ou_source;
-
-    // 接受 'API' 或 'PREMATCH_API' 作为有效来源
-    if (value === null || value === undefined || !source) {
+    const value = match.initialOverUnder ?? match.away?.overUnder ?? null;
+    if (value === null || value === undefined) {
       return null; // 不显示
     }
     return String(value);
-  }, [match.away]);
+  }, [match.initialOverUnder, match.away]);
 
   // v162: 赔率历史趋势
   const oddsMovement = useMemo((): OddsMovementSummary | null => {

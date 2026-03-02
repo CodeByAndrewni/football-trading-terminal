@@ -147,6 +147,11 @@ export interface AdvancedMatch {
   substitutions: Substitution[];
   cards: CardInfo;
   odds: OddsInfo;
+  extraMinute?: number | null;    // 当前补时时间（如有），用于显示 45'+X / 90'+X
+
+  // 赛前初始盘口快照（仅来自 prematch odds，不随 live 盘口变化）
+  initialHandicap?: number | null;
+  initialOverUnder?: number | null;
   corners: { home: number; away: number; recent5min: number | null } | null;
   goalHistory?: GoalDistribution | null;  // Phase 2A: 允许 null
   killScore: number;

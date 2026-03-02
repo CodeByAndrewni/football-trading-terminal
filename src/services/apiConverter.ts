@@ -597,6 +597,8 @@ export function convertApiMatchToAdvanced(
   const eventsValidation = validateEvents(events);
   const dataQuality = computeDataQuality(fixtureValidation, statsValidation, oddsValidation, eventsValidation);
 
+  const extraMinute = match.fixture.status?.extra ?? null;
+
   const advancedMatch: AdvancedMatch = {
     id: fixtureId,
     league: leagueName,
@@ -605,6 +607,7 @@ export function convertApiMatchToAdvanced(
     leagueLogo: match.league?.logo,
     minute,
     status,
+    extraMinute,
     home: {
       id: homeTeamId,
       name: match.teams?.home?.name || 'Home',

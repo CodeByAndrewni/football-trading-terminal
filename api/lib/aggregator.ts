@@ -61,6 +61,12 @@ export interface AdvancedMatch {
   // === 赔率数据 (来源: OddsLiveCore ← /odds/live 或 OddsPrematchCore ← /odds) ===
   odds?: OddsInfo;
 
+  // === 赛前初始盘口快照 (仅来自 OddsPrematchCore ← /odds) ===
+  // 注意：initialHandicap / initialOverUnder 只反映赛前主盘口线，
+  //       不会被 live odds 或后续盘口变化覆盖。
+  initialHandicap?: number | null;
+  initialOverUnder?: number | null;
+
   // === 事件数据 (来源: LiveEventsCore ← /fixtures/events) ===
   events?: MatchEventForUI[];
   homeTeamId?: number;
@@ -866,6 +872,9 @@ export function aggregateMatches(
         referee: fixture.fixture.referee || undefined,
         // 新增: 半场比分
         halftimeScore: fixture.score.halftime,
+        // 初始盘口快照默认为空，由赛前赔率单独填充
+        initialHandicap: null,
+        initialOverUnder: null,
       };
 
       // === 统计数据 (来源: LiveStatsCore ← /fixtures/statistics) ===
@@ -922,30 +931,43 @@ export function aggregateMatches(
       const liveOdds = liveOddsMap.get(fixtureId);
       const prematchOdds = prematchOddsMap.get(fixtureId);
 
-      // 优先使用滚球赔率
-      let odds = parseLiveOdds(liveOdds);
-      let oddsSource: 'live' | 'prematch' | null = odds ? 'live' : null;
+      // 解析实时赔率和赛前赔率
+      const liveOddsInfo = parseLiveOdds(liveOdds);
+      const prematchOddsInfo = parsePrematchOdds(prematchOdds);
 
-      // 回落到赛前赔率
-      if (!odds) {
-        odds = parsePrematchOdds(prematchOdds);
-        oddsSource = odds ? 'prematch' : null;
+      // 当前盘口：优先使用 live odds，其次回退到 prematch odds
+      let odds: OddsInfo | null = null;
+      let oddsSource: 'live' | 'prematch' | null = null;
+
+      if (liveOddsInfo) {
+        odds = liveOddsInfo;
+        oddsSource = 'live';
+      } else if (prematchOddsInfo) {
+        odds = prematchOddsInfo;
+        oddsSource = 'prematch';
       }
 
       if (odds) {
         match.odds = odds;
         match._oddsSource = oddsSource;
-        // 填充 home.handicap 和 away.overUnder
-        if (odds.handicap.value !== null) {
-          match.home.handicap = odds.handicap.value;
-          match.home._handicap_source = oddsSource === 'live' ? 'API' : 'PREMATCH_API';
-        }
-        if (odds.overUnder.total !== null) {
-          match.away.overUnder = odds.overUnder.total;
-          match.away._ou_source = oddsSource === 'live' ? 'API' : 'PREMATCH_API';
-        }
       } else {
         match.odds = createEmptyOdds('暂无实时赔率');
+        match._oddsSource = null;
+      }
+
+      // 赛前初盘快照：仅从 prematch odds 中提取，不受 live odds 影响
+      if (prematchOddsInfo) {
+        const initialHandicap =
+          prematchOddsInfo.handicap && prematchOddsInfo.handicap.value !== null
+            ? prematchOddsInfo.handicap.value
+            : null;
+        const initialOverUnder =
+          prematchOddsInfo.overUnder && prematchOddsInfo.overUnder.total !== null
+            ? prematchOddsInfo.overUnder.total
+            : null;
+
+        match.initialHandicap = initialHandicap;
+        match.initialOverUnder = initialOverUnder;
       }
 
       // === 数据质量标记 ===

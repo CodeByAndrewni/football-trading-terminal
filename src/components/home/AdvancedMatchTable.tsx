@@ -9,6 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { Star, Zap, AlertCircle } from 'lucide-react';
 import type { AdvancedMatch } from '../../data/advancedMockData';
 import { calculateDynamicScore, type ScoreResult } from '../../services/scoringEngine';
+import { useLiveClock } from '../../hooks/useLiveClock';
+import { formatMatchMinute } from '../../utils/matchTime';
 
 interface AdvancedMatchTableProps {
   matches: AdvancedMatch[];
@@ -52,6 +54,8 @@ function MatchCard({
   onToggleWatch: () => void;
   onViewDetail: () => void;
 }) {
+  const liveClockTick = useLiveClock(5000);
+  const deltaMinutes = Math.floor((liveClockTick * 5) / 60);
   const scoreResult = calculateDynamicScore(match);
   const rating = scoreResult?.totalScore ?? 0;
   const confidence = scoreResult?.confidence ?? 0;
@@ -102,7 +106,7 @@ function MatchCard({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <span className="text-sm text-[#666] font-medium">{match.leagueShort || match.league}</span>
-          <span className={`text-lg ${getMinuteStyle()}`}>{match.minute}'</span>
+          <span className={`text-lg ${getMinuteStyle()}`}>{formatMatchMinute(match, deltaMinutes)}</span>
         </div>
         <div className="flex items-center gap-2">
           {/* 评分徽章 */}
@@ -130,9 +134,13 @@ function MatchCard({
           {/* 主队 */}
           <div className="flex items-center gap-2 mb-1">
             <span className="text-lg font-medium text-white truncate max-w-[200px]">{match.home.name}</span>
-            {match.home.handicap != null && match.home.handicap !== 0 && (
-              <span className="text-sm text-[#888]">({match.home.handicap > 0 ? '+' : ''}{match.home.handicap})</span>
-            )}
+            {(match.initialHandicap ?? match.home.handicap) != null &&
+              (match.initialHandicap ?? match.home.handicap) !== 0 && (
+                <span className="text-sm text-[#888]">
+                  ({(match.initialHandicap ?? match.home.handicap)! > 0 ? '+' : ''}
+                  {match.initialHandicap ?? match.home.handicap})
+                </span>
+              )}
           </div>
           {/* 客队 */}
           <div className="flex items-center gap-2">

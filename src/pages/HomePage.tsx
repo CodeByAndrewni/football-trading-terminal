@@ -137,6 +137,9 @@ export function HomePage() {
   const { data: matchesData, isLoading, error, refetch, liveMatches } = useLiveMatchesAdvanced();
   console.log('[RAW_MATCHES]', matchesData?.matches?.length, matchesData?.matches);
   const refreshMatches = useRefreshMatches();
+  const [nowString, setNowString] = useState(
+    new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  );
 
   // 简单统计：liveMatches 总数与有赔率数量
   useEffect(() => {
@@ -146,6 +149,14 @@ export function HomePage() {
     const withOdds = list.filter((m) => m.odds?._fetch_status === 'SUCCESS');
     console.log('[ODDS_DIAG] liveMatches 总数:', list.length, '有赔率:', withOdds.length);
   }, [liveMatches]);
+
+  // 顶部本地时钟（每秒更新一次）
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNowString(new Date().toLocaleTimeString('zh-CN', { hour12: false }));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // 是否使用新表格 V2
   const [useTableV2, setUseTableV2] = useState(true);
@@ -557,7 +568,7 @@ export function HomePage() {
 
         {/* 时间 */}
         <div className="hidden sm:block text-lg font-mono text-[#00d4ff]">
-          {new Date().toLocaleTimeString('zh-CN', { hour12: false })}
+          {nowString}
         </div>
       </header>
 

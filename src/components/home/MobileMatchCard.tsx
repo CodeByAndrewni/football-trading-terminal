@@ -8,6 +8,8 @@ import { Star, ChevronRight, Zap, TrendingUp, TrendingDown, Minus } from 'lucide
 import type { AdvancedMatch } from '../../data/advancedMockData';
 import { LEAGUE_COLORS } from '../../data/advancedMockData';
 import { calculateDynamicScore, type ScoreResult } from '../../services/scoringEngine';
+import { useLiveClock } from '../../hooks/useLiveClock';
+import { formatMatchMinute } from '../../utils/matchTime';
 
 interface MobileMatchCardProps {
   match: AdvancedMatch;
@@ -35,6 +37,9 @@ export function MobileMatchCard({ match, onToggleWatch }: MobileMatchCardProps) 
 
   // 即使无法评分，比赛项仍然应该显示
   const isUnscoreable = !scoreResult || match._unscoreable === true;
+
+  const liveClockTick = useLiveClock(5000);
+  const deltaMinutes = Math.floor((liveClockTick * 5) / 60);
 
   // 评分样式
   const getScoreStyle = () => {
@@ -77,7 +82,7 @@ export function MobileMatchCard({ match, onToggleWatch }: MobileMatchCardProps) 
           </span>
           <div className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-accent-success animate-pulse" />
-            <span className={`font-mono text-xs ${getMinuteStyle()}`}>{match.minute}'</span>
+            <span className={`font-mono text-xs ${getMinuteStyle()}`}>{formatMatchMinute(match, deltaMinutes)}</span>
           </div>
         </div>
 
@@ -133,18 +138,39 @@ export function MobileMatchCard({ match, onToggleWatch }: MobileMatchCardProps) 
       <div className="flex items-center justify-between pt-2 border-t border-border-default">
         {/* 左侧数据 */}
         <div className="flex items-center gap-3 text-[10px]">
-          {/* 让球盘 */}
+          {/* 让球盘：优先使用当前盘口线，其次回退到球队字段 */}
           <div className="flex items-center gap-1">
             <span className="text-text-muted">让球</span>
-            <span className={`font-mono ${(match.home.handicap ?? 0) < 0 ? 'text-accent-danger' : 'text-accent-success'}`}>
-              {match.home.handicap != null ? ((match.home.handicap > 0 ? '+' : '') + match.home.handicap) : 'N/A'}
-            </span>
+            {(() => {
+              const handicapValue =
+                match.odds?.handicap?.value ??
+                match.home.handicap ??
+                null;
+              const display =
+                handicapValue != null
+                  ? `${handicapValue > 0 ? '+' : ''}${handicapValue}`
+                  : 'N/A';
+              const isNegative = (handicapValue ?? 0) < 0;
+              return (
+                <span
+                  className={`font-mono ${
+                    isNegative ? 'text-accent-danger' : 'text-accent-success'
+                  }`}
+                >
+                  {display}
+                </span>
+              );
+            })()}
           </div>
 
-          {/* 大小球 */}
+          {/* 大小球：优先使用当前盘口线，其次回退到球队字段 */}
           <div className="flex items-center gap-1">
             <span className="text-text-muted">大小</span>
-            <span className="font-mono text-text-secondary">{match.away.overUnder}</span>
+            <span className="font-mono text-text-secondary">
+              {match.odds?.overUnder?.total ??
+                match.away.overUnder ??
+                'N/A'}
+            </span>
           </div>
 
           {/* 角球 */}
