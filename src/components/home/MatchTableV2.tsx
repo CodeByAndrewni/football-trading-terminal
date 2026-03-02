@@ -52,6 +52,7 @@ export interface MatchTableFilters {
   hideNoOddsCoverage?: boolean; // 隐藏无赔率覆盖的比赛
   minMinute?: number; // 最小比赛分钟
   minRating?: number; // 最小评分
+  oddsMode?: 'ALL' | 'WITH_LIVE' | 'WITHOUT_LIVE'; // 滚球盘口筛选模式
 }
 
 interface MatchTableV2Props {
@@ -302,6 +303,18 @@ export function MatchTableV2({
     if (filters?.minRating && filters.minRating > 0) {
       filteredMatches = filteredMatches.filter(
         (m) => (m.scoreResult?.totalScore ?? 0) >= filters.minRating!
+      );
+    }
+
+    // 新增：根据滚球盘口模式筛选
+    const oddsMode = filters?.oddsMode ?? 'ALL';
+    if (oddsMode === 'WITH_LIVE') {
+      filteredMatches = filteredMatches.filter(
+        (m) => m.odds?._is_live === true
+      );
+    } else if (oddsMode === 'WITHOUT_LIVE') {
+      filteredMatches = filteredMatches.filter(
+        (m) => m.odds?._is_live !== true
       );
     }
 

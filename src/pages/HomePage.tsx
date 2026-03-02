@@ -48,11 +48,14 @@ interface MatchWithScore extends AdvancedMatch {
 
 type ViewMode = 'card' | 'table';
 
+type OddsMode = 'ALL' | 'WITH_LIVE' | 'WITHOUT_LIVE';
+
 interface Filters {
   league: string;
   minMinute: number;
   showAll: boolean; // 显示所有比赛还是只显示75+
   scannerMode: boolean; // Phase 2: 失衡扫描器模式
+  oddsMode: OddsMode; // 滚球盘口筛选：全部 / 有滚球 / 无滚球
 }
 
 // ============================================
@@ -123,6 +126,7 @@ export function HomePage() {
     minMinute: 0,
     showAll: true, // 默认显示全部，用户可选择75+或80+筛选
     scannerMode: false, // Phase 2: 失衡扫描器模式
+    oddsMode: 'ALL', // 默认不过滤盘口类型
   });
 
   // Phase 2: 扫描器配置
@@ -664,6 +668,45 @@ export function HomePage() {
           </button>
         </div>
 
+        <span className="text-[#333]">|</span>
+
+        {/* 盘口筛选：全部 / 有滚球 / 无滚球 */}
+        <div className="flex items-center gap-1 bg-[#111] rounded-lg p-1">
+          <button
+            type="button"
+            onClick={() => setFilters(f => ({ ...f, oddsMode: 'ALL' }))}
+            className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+              filters.oddsMode === 'ALL'
+                ? 'bg-[#00d4ff] text-black'
+                : 'text-[#888] hover:text-white hover:bg-[#1a1a1a]'
+            }`}
+          >
+            盘口:全部
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilters(f => ({ ...f, oddsMode: 'WITH_LIVE' }))}
+            className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+              filters.oddsMode === 'WITH_LIVE'
+                ? 'bg-[#22c55e] text-black'
+                : 'text-[#22c55e] hover:bg-[#22c55e]/15'
+            }`}
+          >
+            有滚球
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilters(f => ({ ...f, oddsMode: 'WITHOUT_LIVE' }))}
+            className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+              filters.oddsMode === 'WITHOUT_LIVE'
+                ? 'bg-[#444] text-white'
+                : 'text-[#888] hover:text-white hover:bg-[#1a1a1a]'
+            }`}
+          >
+            无滚球
+          </button>
+        </div>
+
         <div className="flex-1" />
 
         {/* 显示数量 */}
@@ -769,6 +812,7 @@ export function HomePage() {
                 matches={processedMatches}
                 onToggleWatch={toggleWatch}
                 watchedMatches={watchedMatches}
+                filters={{ oddsMode: filters.oddsMode }}
                 showImbalanceColumns={filters.scannerMode}
               />
             ) : (
