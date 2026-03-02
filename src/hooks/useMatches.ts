@@ -128,6 +128,7 @@ export function useLiveMatchesAdvanced(options?: {
   enabled?: boolean;
   refetchInterval?: number | false;
 }) {
+  const queryClient = useQueryClient();
   const previousMatchesRef = useRef<AdvancedMatch[] | undefined>(undefined);
 
   const query = useQuery({
@@ -179,10 +180,34 @@ export function useLiveMatchesAdvanced(options?: {
         }
       }
 
-      // Fallback: 使用旧的直连模式
+      // Fallback: 使用旧的直连模式（直连 API-Football）
       try {
         console.log('[useMatches] Calling getLiveMatchesAdvancedLegacy...');
-        const apiMatches = await getLiveMatchesAdvancedLegacy();
+
+        // 直连模式下，赔率 / 统计 / 事件是异步加载完成后，通过 onOddsLoaded 回调更新 React Query 缓存
+        const apiMatches = await getLiveMatchesAdvancedLegacy({
+          onOddsLoaded: (matchesWithOdds) => {
+            try {
+              const merged = mergeMatches(previousMatchesRef.current, matchesWithOdds);
+              previousMatchesRef.current = merged;
+
+              queryClient.setQueryData(queryKeys.matches.liveAdvanced(), (prev: MatchesResult | undefined) => {
+                if (!prev) {
+                  return {
+                    matches: merged,
+                    dataSource: 'api' as DataSource,
+                  };
+                }
+                return {
+                  ...prev,
+                  matches: merged,
+                };
+              });
+            } catch (err) {
+              console.error('[useMatches] Failed to apply onOddsLoaded result:', err);
+            }
+          },
+        });
 
         console.log(`[useMatches] ✅ Received ${apiMatches.length} matches from API-Football`);
 
@@ -207,7 +232,7 @@ export function useLiveMatchesAdvanced(options?: {
           }
         }
 
-        // 🔥 CRITICAL: 返回所有比赛，即使没有赔率/统计
+        // 🔥 CRITICAL: 首次返回所有比赛，即使暂时没有赔率/统计
         if (apiMatches.length > 0) {
           const mergedMatches = mergeMatches(previousMatchesRef.current, apiMatches);
           previousMatchesRef.current = mergedMatches;
