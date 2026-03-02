@@ -39,10 +39,12 @@ import type { Match, TeamStatistics, MatchEvent, Lineup } from '../types';
 // ============================================
 
 /**
- * 是否使用后端聚合模式（Vercel /api/matches + KV）
- * true = 生产环境走 Vercel API，本地开发由 isAggregatorAvailable() 返回 false 自动走直连
+ * 是否使用后端聚合模式
+ * 设置为 true 使用新架构，false 使用旧的直连模式
+ *
+ * 🔧 临时禁用：Same 平台不支持 serverless functions
  */
-const USE_AGGREGATED_API = true;
+const USE_AGGREGATED_API = false;
 
 /**
  * 当聚合 API 失败时是否 fallback 到旧模式
@@ -126,7 +128,6 @@ export function useLiveMatchesAdvanced(options?: {
   enabled?: boolean;
   refetchInterval?: number | false;
 }) {
-  const queryClient = useQueryClient();
   const previousMatchesRef = useRef<AdvancedMatch[] | undefined>(undefined);
 
   const query = useQuery({
@@ -139,6 +140,7 @@ export function useLiveMatchesAdvanced(options?: {
 
           // 检查是否正在初始化
           if (isInitializing(result.meta)) {
+            console.log('[useMatches] Aggregator initializing, waiting...');
             return {
               matches: [],
               dataSource: 'aggregated',
@@ -147,8 +149,9 @@ export function useLiveMatchesAdvanced(options?: {
             };
           }
 
+          // 检查缓存是否陈旧
           if (isCacheStale(result.meta)) {
-            // 缓存陈旧，继续使用当前数据
+            console.warn('[useMatches] Aggregator cache is stale');
           }
 
           const mergedMatches = mergeMatches(previousMatchesRef.current, result.matches);
@@ -161,9 +164,11 @@ export function useLiveMatchesAdvanced(options?: {
           };
 
         } catch (error) {
+          console.error('[useMatches] Aggregator failed:', error);
+
           // 如果允许 fallback，尝试旧模式
           if (FALLBACK_TO_LEGACY) {
-            // fallback to legacy
+            console.log('[useMatches] Falling back to legacy API...');
           } else {
             return {
               matches: [],
@@ -174,28 +179,48 @@ export function useLiveMatchesAdvanced(options?: {
         }
       }
 
-      // Fallback: 使用旧的直连模式；赔率加载完成后通过 onOddsLoaded 更新缓存
+      // Fallback: 使用旧的直连模式
       try {
-        const apiMatches = await getLiveMatchesAdvancedLegacy({
-          onOddsLoaded: (matchesWithOdds) => {
-            const merged = mergeMatches(previousMatchesRef.current, matchesWithOdds);
-            previousMatchesRef.current = merged;
-            queryClient.setQueryData(queryKeys.matches.liveAdvanced(), (prev: MatchesResult | undefined) => {
-              if (!prev) return { matches: merged, dataSource: 'api' };
-              return { ...prev, matches: merged };
-            });
-          },
-        });
+        console.log('[useMatches] Calling getLiveMatchesAdvancedLegacy...');
+        const apiMatches = await getLiveMatchesAdvancedLegacy();
 
+        console.log(`[useMatches] ✅ Received ${apiMatches.length} matches from API-Football`);
+
+        // 🔥 详细调试日志
+        if (apiMatches.length > 0) {
+          const withOdds = apiMatches.filter(m => m.odds?._fetch_status === 'SUCCESS');
+          const withStats = apiMatches.filter(m => m.stats !== null);
+
+          console.log(`[useMatches] Data status: odds=${withOdds.length}/${apiMatches.length}, stats=${withStats.length}/${apiMatches.length}`);
+
+          // 打印前3个比赛的详细信息
+          for (let i = 0; i < Math.min(3, apiMatches.length); i++) {
+            const m = apiMatches[i];
+            console.log(`[useMatches] Match ${i + 1}: ${m.home.name} vs ${m.away.name}`, {
+              id: m.id,
+              status: m.status,
+              minute: m.minute,
+              score: `${m.home.score}-${m.away.score}`,
+              hasOdds: m.odds?._fetch_status === 'SUCCESS',
+              hasStats: m.stats !== null,
+            });
+          }
+        }
+
+        // 🔥 CRITICAL: 返回所有比赛，即使没有赔率/统计
         if (apiMatches.length > 0) {
           const mergedMatches = mergeMatches(previousMatchesRef.current, apiMatches);
           previousMatchesRef.current = mergedMatches;
+
+          console.log(`[useMatches] ✅ Returning ${mergedMatches.length} matches to UI`);
           return { matches: mergedMatches, dataSource: 'api' };
         }
 
+        console.log('[useMatches] ⚠️ No live matches from API-Football');
         return { matches: [], dataSource: 'none', error: 'NO_LIVE_MATCHES' };
 
       } catch (error) {
+        console.error('[useMatches] ❌ API request failed:', error);
         return {
           matches: [],
           dataSource: 'none',
@@ -204,7 +229,7 @@ export function useLiveMatchesAdvanced(options?: {
       }
     },
     staleTime: 10 * 1000,
-    refetchInterval: options?.refetchInterval ?? refetchIntervals.liveMatches,
+    refetchInterval: options?.refetchInterval ?? 10 * 1000,
     enabled: options?.enabled ?? true,
     structuralSharing: (oldData, newData) => {
       if (!oldData) return newData;
@@ -222,7 +247,12 @@ export function useLiveMatchesAdvanced(options?: {
   });
 
   const matches = query.data?.matches ?? [];
-  const liveMatches: AdvancedMatch[] = matches;  // 暂时不过滤，让所有比赛都显示
+  if (matches.length > 0) {
+    const uniqueStatuses = [...new Set(matches.map(m => JSON.stringify(m.status)))];
+    console.log('[RAW_MATCHES_SAMPLE] unique status values (all matches):', uniqueStatuses);
+  }
+  const liveMatches = matches.filter((m) => m.status === 'live');
+  console.log('[MATCHES_FILTERED] liveMatches=', liveMatches.length, 'allMatches=', matches.length);
 
   return { ...query, liveMatches };
 }
@@ -253,6 +283,7 @@ export function useTodayMatchesAdvanced(options?: {
           return { matches: mergedMatches, dataSource: 'api' };
         }
 
+        console.log('[useMatches] No today matches from API-Football');
         return { matches: [], dataSource: 'none', error: 'NO_TODAY_MATCHES' };
 
       } catch (error) {
@@ -297,6 +328,7 @@ export function useMatchAdvanced(matchId: number | undefined, options?: {
           return { match, dataSource: 'api' as DataSource };
         }
 
+        console.log(`[useMatches] Match ${matchId} not found`);
         return null;
 
       } catch (error) {

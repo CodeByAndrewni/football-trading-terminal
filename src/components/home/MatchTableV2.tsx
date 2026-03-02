@@ -81,6 +81,8 @@ interface MatchWithScore extends AdvancedMatch {
   latePhase: 'inactive' | 'warmup' | 'active';
 }
 
+const LIVE_WINDOW_MS = 5 * 60 * 1000; // 5分钟内视为“近期有滚球盘口”
+
 export function MatchTableV2({
   matches,
   onToggleWatch,
@@ -103,6 +105,7 @@ export function MatchTableV2({
   // v161: 声音通知 - 追踪已通知的比赛
   const notifiedMatchesRef = useRef<Set<string>>(new Set());
   const [soundEnabled, setSoundEnabled] = useState(soundService.isEnabled());
+  const lastSeenLiveAtRef = useRef<Map<number, number>>(new Map());
 
   // v161: 获取球队强弱数据
   useEffect(() => {
@@ -152,12 +155,19 @@ export function MatchTableV2({
 
   // 加强评分 + 排序
   const matchesWithScores: MatchWithScore[] = useMemo(() => {
+    const now = Date.now();
+
     return matches.map((m) => {
       // 🔥 DEBUG: 每个 fixture 的赔率和统计数据获取状态
       const hasOdds = m.odds?._fetch_status === 'SUCCESS';
       const hasStats = m.stats?._realDataAvailable === true;
       const hasLiveOdds = hasOdds && m.odds?._is_live === true;
       const hasPrematchOdds = hasOdds && m.odds?._source === 'PREMATCH';
+
+      // 记录最近一次看到 live 盘口的时间戳（用于“粘滞式” WITH_LIVE 过滤）
+      if (hasLiveOdds) {
+        lastSeenLiveAtRef.current.set(m.id, now);
+      }
 
       console.log(`[Odds Debug] fixture=${m.id} | ${m.home.name} vs ${m.away.name}`, {
         hasOdds,
@@ -306,12 +316,15 @@ export function MatchTableV2({
       );
     }
 
-    // 新增：根据滚球盘口模式筛选
+    // 新增：根据滚球盘口模式筛选（WITH_LIVE 使用“粘滞式”时间窗口）
     const oddsMode = filters?.oddsMode ?? 'ALL';
     if (oddsMode === 'WITH_LIVE') {
-      filteredMatches = filteredMatches.filter(
-        (m) => m.odds?._is_live === true
-      );
+      const now = Date.now();
+      filteredMatches = filteredMatches.filter((m) => {
+        const lastSeen = lastSeenLiveAtRef.current.get(m.id);
+        if (typeof lastSeen !== 'number') return false;
+        return now - lastSeen <= LIVE_WINDOW_MS;
+      });
     } else if (oddsMode === 'WITHOUT_LIVE') {
       filteredMatches = filteredMatches.filter(
         (m) => m.odds?._is_live !== true

@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Target, TrendingUp, Zap, ChevronDown, ChevronUp, Clock, AlertTriangle } from 'lucide-react';
+import { Target, TrendingUp, Zap, ChevronDown, ChevronUp, Clock, AlertTriangle, Swords } from 'lucide-react';
 import type { AdvancedMatch } from '../../data/advancedMockData';
 import {
   calculateUnifiedLateSignal,
@@ -343,7 +343,7 @@ export function LateHunterPanel({ matches, onMatchClick }: LateHunterPanelProps)
                           </div>
                         </div>
 
-                        {/* 右侧：评分和行动 */}
+                        {/* 右侧：评分和行动 + 作战室入口 */}
                         <div className="flex flex-col items-end gap-1 ml-4">
                           {/* 评分 */}
                           <div className="flex items-center gap-2">
@@ -371,6 +371,20 @@ export function LateHunterPanel({ matches, onMatchClick }: LateHunterPanelProps)
                           >
                             {actionInfo.label}
                           </span>
+
+                          {/* 作战室快捷入口 */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/battle?focusId=${match.id}`);
+                            }}
+                            className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded border border-[#ff4444]/40 text-[10px] text-[#ff8888] hover:bg-[#ff4444]/15 transition-colors"
+                            title="在作战室中查看"
+                          >
+                            <Swords className="w-3 h-3" />
+                            作战室
+                          </button>
                         </div>
                       </div>
                     </div>

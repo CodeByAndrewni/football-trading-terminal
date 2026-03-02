@@ -5,7 +5,7 @@
 // ============================================
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   Volume2, VolumeX, RefreshCw, ChevronDown, ChevronUp,
   Flame, AlertTriangle, Snowflake, Bell, CheckCircle, Clock,
@@ -80,6 +80,8 @@ const TOP_LEAGUES = ['英超', '西甲', '德甲', '意甲', '法甲'];
 
 export function BattleRoomPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const focusId = Number(searchParams.get('focusId') || 0) || 0;
   const [currentTime, setCurrentTime] = useState(new Date());
   const [soundEnabled, setSoundEnabled] = useState(soundService.isEnabled());
   const [signals, setSignals] = useState<SignalRecord[]>([]);
@@ -538,17 +540,13 @@ export function BattleRoomPage() {
           </div>
 
           {highMatches.length > 0 ? (
-            <div className="space-y-4">
-              {highMatches.map(match => (
-                <HighSignalCard
-                  key={match.id}
-                  match={match}
-                  onViewDetail={() => navigate(`/match/${match.id}`)}
-                  onCopy={() => handleCopy(match)}
-                  copied={copiedId === match.id}
-                />
-              ))}
-            </div>
+            <HighSignalList
+              matches={highMatches}
+              focusId={focusId}
+              onViewDetail={(id) => navigate(`/match/${id}`)}
+              onCopy={handleCopy}
+              copiedId={copiedId}
+            />
           ) : (
             <div className="bg-[#111] border border-[#222] rounded-xl p-8 text-center text-[#666]">
               <Flame className="w-12 h-12 mx-auto mb-3 opacity-30" />
@@ -684,16 +682,62 @@ function FilterButton({
   );
 }
 
+function HighSignalList({
+  matches,
+  focusId,
+  onViewDetail,
+  onCopy,
+  copiedId,
+}: {
+  matches: MatchWithSignal[];
+  focusId: number;
+  onViewDetail: (id: number) => void;
+  onCopy: (match: MatchWithSignal) => void;
+  copiedId: number | null;
+}) {
+  const focusedRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!focusId) return;
+    if (!focusedRef.current) return;
+    focusedRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [focusId]);
+
+  return (
+    <div className="space-y-4">
+      {matches.map(match => {
+        const isFocused = focusId !== 0 && match.id === focusId;
+        const rowRef = isFocused ? focusedRef : undefined;
+        return (
+          <HighSignalCard
+            key={match.id}
+            match={match}
+            onViewDetail={() => onViewDetail(match.id)}
+            onCopy={() => onCopy(match)}
+            copied={copiedId === match.id}
+            isFocused={isFocused}
+            rowRef={rowRef}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function HighSignalCard({
   match,
   onViewDetail,
   onCopy,
   copied,
+  isFocused,
+  rowRef,
 }: {
   match: MatchWithSignal;
   onViewDetail: () => void;
   onCopy: () => void;
   copied: boolean;
+  isFocused: boolean;
+  rowRef?: React.RefObject<HTMLDivElement>;
 }) {
   const { signalStrength, kellyResult, reasons, signalResult } = match;
 
@@ -707,7 +751,14 @@ function HighSignalCard({
   const trend = getTrend();
 
   return (
-    <div className="bg-[#111] border border-[#ff4444]/30 rounded-xl overflow-hidden hover:border-[#ff4444]/50 transition-colors">
+    <div
+      ref={rowRef}
+      className={`bg-[#111] border rounded-xl overflow-hidden hover:border-[#ff4444]/50 transition-colors ${
+        isFocused
+          ? 'border-[#00d4ff] ring-2 ring-[#00d4ff]/60 ring-offset-2 ring-offset-[#050505]'
+          : 'border-[#ff4444]/30'
+      }`}
+    >
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 bg-[#1a0808] border-b border-[#ff4444]/20">
         <div className="flex items-center gap-3">

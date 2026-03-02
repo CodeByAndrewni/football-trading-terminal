@@ -164,6 +164,11 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
   const hasEvents = events.length > 0;
   const hasGoals = homeScore > 0 || awayScore > 0;
 
+   // 如果从未有过事件且比赛尚未开始，则可以完全隐藏时间轴
+   if (!hasEvents && isNotStarted) {
+     return null;
+   }
+
   return (
     <div
       className={`relative h-8 bg-[#1a1a1a] rounded overflow-hidden ${className}`}
