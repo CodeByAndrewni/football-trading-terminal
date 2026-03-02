@@ -222,12 +222,7 @@ export function useLiveMatchesAdvanced(options?: {
   });
 
   const matches = query.data?.matches ?? [];
-  // 排除加时赛（120' 及以后）
-  const noOvertime = matches.filter((m) => (m.minute ?? 0) < 120);
-  // 只保留真正进行中的比赛：status === 'live'，排除 ft/ns/ht
-  const liveMatches: AdvancedMatch[] = noOvertime.filter((m) =>
-    String(m.status).toLowerCase() === 'live'
-  );
+  const liveMatches: AdvancedMatch[] = matches;  // 暂时不过滤，让所有比赛都显示
 
   return { ...query, liveMatches };
 }
