@@ -18,7 +18,7 @@ interface StandingsCache {
 }
 
 const standingsCache = new Map<string, StandingsCache>();
-const CACHE_TTL = 60 * 60 * 1000; // 1小时
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24小时
 
 // ============================================
 // 类型

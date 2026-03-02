@@ -11,7 +11,7 @@ import { hasLiveOddsCoverage } from '../config/constants';
 // 请求缓存配置
 // ============================================
 const LIVE_CACHE_TTL_MS = 15000; // 实时赔率缓存有效期 15 秒
-const PREMATCH_CACHE_TTL_MS = 300000; // 赛前赔率缓存有效期 5 分钟（比赛中不变）
+const PREMATCH_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 赛前赔率缓存有效期 24 小时（刷新频率由调度控制）
 const MAX_CACHE_SIZE = 200; // 最大缓存条目数
 
 interface CachedOddsEntry {

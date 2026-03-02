@@ -32,7 +32,7 @@ export const CACHE_TTL = {
   FIXTURE_STATS: 30 * 1000,        // 30秒 - 比赛统计
   PREMATCH_ODDS: 5 * 60 * 1000,    // 5分钟 - 赛前赔率
   H2H: 5 * 60 * 1000,              // 5分钟 - 历史对战
-  STANDINGS: 60 * 60 * 1000,       // 1小时 - 积分榜
+  STANDINGS: 24 * 60 * 60 * 1000,       // 24小时 - 积分榜
   TEAM_STATS: 60 * 60 * 1000,      // 1小时 - 球队统计
   INJURIES: 60 * 60 * 1000,        // 1小时 - 伤病信息
   LEAGUES: 24 * 60 * 60 * 1000,    // 24小时 - 联赛信息

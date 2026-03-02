@@ -38,6 +38,13 @@ import {
 // ============================================
 import * as SDK from './apiFootballSDK';
 
+// 赛前赔率刷新控制：fixtureId -> 下次允许刷新时间戳（毫秒）
+const ONE_MINUTE_MS = 60 * 1000;
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+const TEN_MINUTES_MS = 10 * 60 * 1000;
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+const prematchNextRefreshAt = new Map<number, number | null>();
+
 // 重新导出SDK中有用的常量和类型
 export { LEAGUE_IDS, BOOKMAKER_IDS, BET_TYPE_IDS } from './apiFootballSDK';
 export { ApiFootballError, clearCache as clearSDKCache } from './apiFootballSDK';
@@ -768,20 +775,67 @@ export async function getLiveMatchesAdvanced(options?: GetLiveMatchesAdvancedOpt
 
         await Promise.all(
           batch.map(async (match) => {
+            const fixtureId = match.fixture.id;
             try {
-              // 先检查缓存
-              const cached = getCachedPrematchOdds(match.fixture.id);
-              if (cached !== null) {
-                prematchOddsMap.set(match.fixture.id, cached);
+              const now = Date.now();
+              const kickoffTimestampSec = match.fixture.timestamp ?? 0;
+              const kickoffMs = kickoffTimestampSec * 1000;
+              const timeToKickoff = kickoffMs - now;
+              const timeSinceKickoff = now - kickoffMs;
+
+              // 默认不刷新，仅使用缓存；根据时间窗口决定是否允许刷新
+              let shouldFetchFromApi = false;
+              let nextRefreshAt: number | null = prematchNextRefreshAt.get(fixtureId) ?? null;
+
+              if (kickoffTimestampSec) {
+                if (timeToKickoff > TWENTY_FOUR_HOURS_MS) {
+                  // 距开赛超过24小时：不请求赛前赔率
+                  shouldFetchFromApi = false;
+                  // 下次刷新时间设置为开赛前24小时
+                  nextRefreshAt = kickoffMs - TWENTY_FOUR_HOURS_MS;
+                } else if (timeToKickoff > 0) {
+                  // 24小时内到开赛前：每10分钟最多刷新一次
+                  const interval = TEN_MINUTES_MS;
+                  if (!nextRefreshAt || now >= nextRefreshAt) {
+                    shouldFetchFromApi = true;
+                    nextRefreshAt = now + interval;
+                  }
+                } else if (timeSinceKickoff >= 0 && timeSinceKickoff <= FIVE_MINUTES_MS) {
+                  // 开赛后0-5分钟内：每1分钟最多刷新一次
+                  const interval = ONE_MINUTE_MS;
+                  if (!nextRefreshAt || now >= nextRefreshAt) {
+                    shouldFetchFromApi = true;
+                    nextRefreshAt = now + interval;
+                  }
+                } else {
+                  // 开赛5分钟以后：不再刷新赛前赔率
+                  shouldFetchFromApi = false;
+                  nextRefreshAt = null;
+                }
+              }
+
+              if (nextRefreshAt !== null) {
+                prematchNextRefreshAt.set(fixtureId, nextRefreshAt);
+              }
+
+              // 始终优先尝试使用缓存
+              const cached = getCachedPrematchOdds(fixtureId);
+              if (cached !== null && !shouldFetchFromApi) {
+                prematchOddsMap.set(fixtureId, cached);
                 fetched++;
                 return;
               }
 
-              // 未缓存则从 API 获取
-              const odds = await getOdds(match.fixture.id);
+              if (!shouldFetchFromApi) {
+                // 当前时间窗口不允许刷新且无缓存，跳过该场比赛的赛前赔率请求
+                return;
+              }
+
+              // 允许刷新：从 API 获取赛前赔率并更新缓存
+              const odds = await getOdds(fixtureId);
               if (odds && odds.length > 0) {
-                prematchOddsMap.set(match.fixture.id, odds);
-                setCachedPrematchOdds(match.fixture.id, odds);
+                prematchOddsMap.set(fixtureId, odds);
+                setCachedPrematchOdds(fixtureId, odds);
                 fetched++;
               }
             } catch (error) {

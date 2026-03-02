@@ -135,6 +135,7 @@ export function HomePage() {
 
   // 数据获取
   const { data: matchesData, isLoading, error, refetch, liveMatches } = useLiveMatchesAdvanced();
+  console.log('[RAW_MATCHES]', matchesData?.matches?.length, matchesData?.matches);
   const refreshMatches = useRefreshMatches();
 
   // 简单统计：liveMatches 总数与有赔率数量
@@ -156,8 +157,11 @@ export function HomePage() {
   const processedMatches = useMemo(() => {
     const all = liveMatches ?? [];
 
-    // 定义已结束状态
-    const finishedStatuses = ['FT', 'AET', 'PEN', '完场', '已结束'];
+    // 定义已结束状态（仅用于 UI 层防御性过滤）
+    const finishedStatusSet = new Set<string | number | undefined>([
+      'ft', 'aet', 'pen', 'finished', 'canc', 'awd', 'abd',
+      'FT', 'AET', 'PEN', '完场', '已结束',
+    ]);
 
     // 为每场比赛计算评分（可能为null），添加错误处理防止整个表格崩溃
     const withScores: MatchWithScore[] = all.map(m => {
@@ -178,7 +182,9 @@ export function HomePage() {
     const finishedMatches: MatchWithScore[] = [];
 
     for (const match of withScores) {
-      if (finishedStatuses.includes(match.status)) {
+      const status = String(match.status);
+      const statusLower = status.toLowerCase();
+      if (finishedStatusSet.has(status) || finishedStatusSet.has(statusLower)) {
         finishedMatches.push(match);
       } else {
         liveWithScores.push(match);

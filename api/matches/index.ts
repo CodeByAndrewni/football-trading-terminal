@@ -26,8 +26,8 @@ import { aggregateMatches, calculateBasicKillScore } from '../lib/aggregator.js'
 // ============================================
 
 const CONFIG = {
-  CACHE_TTL: 60,              // 缓存有效期（秒）
-  STALE_TTL: 300,             // 最大允许返回的旧数据年龄（秒）
+  CACHE_TTL: 15,              // 缓存有效期（秒） - 15秒内视为新鲜
+  STALE_TTL: 60,             // 最大允许返回的旧数据年龄（秒） - 60秒内允许作为旧数据返回
   STATS_BATCH_SIZE: 10,
   STATS_BATCH_DELAY: 30,
   ODDS_BATCH_SIZE: 8,

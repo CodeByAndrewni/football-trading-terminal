@@ -492,6 +492,8 @@ export function convertApiMatchToAdvanced(
     oddsSource = 'API-Football';
     isLiveOdds = true;
   } else if (hasPrematchOdds) {
+    // Live odds 不可用时回退到赛前赔率
+    console.log(`[ODDS_FALLBACK] fixture=${fixtureId} 使用 prematch 赔率`);
     effectiveOdds = prematchOddsData;
     oddsSource = 'PREMATCH';
     isLiveOdds = false;

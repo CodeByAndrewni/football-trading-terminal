@@ -12,7 +12,7 @@ export const API_CONFIG = {
 
 // 刷新间隔（毫秒）
 export const REFRESH_INTERVALS = {
-  LIVE_MATCHES: 15000,      // 15秒
+  LIVE_MATCHES: 10000,      // 10秒 - 前端轮询聚合 API
   MATCH_DETAIL: 15000,      // 15秒
   STATISTICS: 20000,        // 20秒
   CORNER_ANALYSIS: 10000,   // 10秒
