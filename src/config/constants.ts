@@ -10,6 +10,21 @@ export const API_CONFIG = {
   },
 };
 
+// 媒体/CDN 配置：API-Football 静态资源（球队/联赛 Logo 等）
+// 默认走官方媒体域名，如需第三方 CDN，只需在环境变量中配置 FOOTBALL_CDN_BASE_URL / VITE_FOOTBALL_CDN_BASE_URL。
+const RAW_FOOTBALL_MEDIA_BASE_URL =
+  // Vite 前端环境变量（优先）
+  (import.meta as any).env?.VITE_FOOTBALL_CDN_BASE_URL ||
+  (import.meta as any).env?.FOOTBALL_CDN_BASE_URL ||
+  // Node / Serverless 环境变量（用于 API Route / 脚本）
+  (typeof process !== 'undefined'
+    ? process.env.FOOTBALL_CDN_BASE_URL || process.env.VITE_FOOTBALL_CDN_BASE_URL
+    : undefined) ||
+  'https://media.api-sports.io';
+
+// 统一导出：不带结尾斜杠，方便 `${FOOTBALL_MEDIA_BASE_URL}/football/teams/123.png`
+export const FOOTBALL_MEDIA_BASE_URL = RAW_FOOTBALL_MEDIA_BASE_URL.replace(/\/$/, '');
+
 // 刷新间隔（毫秒）
 export const REFRESH_INTERVALS = {
   LIVE_MATCHES: 10000,      // 10秒 - 前端轮询聚合 API

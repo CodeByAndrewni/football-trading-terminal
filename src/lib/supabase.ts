@@ -4,9 +4,44 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase 配置
-const SUPABASE_URL = 'https://xppwoiyhnhkfjziwhrvi.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhwcHdvaXlobmhrZmp6aXdocnZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NDc0ODksImV4cCI6MjA4NzQyMzQ4OX0.qQob-oPdMQdMpV3ULxcSNtRkdgeCxNcYdlNCfTF2Dyw';
+// Supabase 配置（浏览器端使用 anon key）
+// URL / Key 均从环境变量读取，避免在代码库中硬编码敏感信息。
+// 统一推荐的变量名：
+// - VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY（前端）
+// - SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY（服务端）
+// 旧的 SUPABASE_ANON_KEY / SUPABASE_SERVICE_KEY / NEXT_PUBLIC_SUPABASE_* 仍保留为兼容读取。
+const SUPABASE_URL =
+  // 推荐：前端环境变量（Vite 公共变量）
+  (import.meta as any).env?.VITE_SUPABASE_URL ||
+  // 兼容：旧 Next 公共变量
+  (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_URL ||
+  // Node / Serverless 环境变量兜底
+  (typeof process !== 'undefined'
+    ? process.env.SUPABASE_URL ||
+      process.env.VITE_SUPABASE_URL ||
+      process.env.NEXT_PUBLIC_SUPABASE_URL
+    : undefined) ||
+  '';
+
+const SUPABASE_ANON_KEY =
+  // 推荐：前端环境变量（Vite 公共变量）
+  (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
+  // 兼容：旧 Next 公共变量
+  (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  // 兼容：旧 SUPABASE_ANON_KEY（Node 端）
+  (typeof process !== 'undefined'
+    ? process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY
+    : undefined) ||
+  '';
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  // 在开发/本地模式下给出友好提示，避免核心逻辑直接崩溃
+  console.warn(
+    '[Supabase] SUPABASE_URL / ANON_KEY 未配置，云端同步与雷达等功能将被禁用（核心评分仍使用 API-Football 实时数据）。'
+  );
+}
 
 // 数据库类型定义
 export interface RadarAlert {
@@ -80,8 +115,34 @@ export interface RadarAlertUpdate {
   updated_at?: string;
 }
 
-// Supabase 客户端实例
+// Supabase 浏览器客户端（使用 anon key）
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Supabase 服务端客户端（仅在 Node / Serverless 环境使用 service role key）
+export function createServerSupabaseClient() {
+  if (typeof process === 'undefined') {
+    throw new Error('createServerSupabaseClient 只能在服务端环境中调用');
+  }
+
+  const url =
+    process.env.SUPABASE_URL ||
+    process.env.VITE_SUPABASE_URL ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    SUPABASE_URL;
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    '';
+
+  if (!url || !serviceRoleKey) {
+    console.warn('[Supabase] 服务端 SUPABASE_URL / SERVICE_ROLE_KEY 未配置，跳过服务端访问。');
+    throw new Error('Supabase server credentials not configured');
+  }
+
+  return createClient(url, serviceRoleKey, {
+    auth: { persistSession: false },
+  });
+}
 
 // Radar Alert 服务函数
 export async function createRadarAlert(data: RadarAlertInsert): Promise<RadarAlert | null> {

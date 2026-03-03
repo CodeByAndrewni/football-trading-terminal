@@ -20,9 +20,14 @@ import { createClient } from '@supabase/supabase-js';
 // 配置
 // ============================================
 
-// 使用与 src/lib/supabase.ts 相同的硬编码值
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://xppwoiyhnhkfjziwhrvi.supabase.co';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhwcHdvaXlobmhrZmp6aXdocnZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NDc0ODksImV4cCI6MjA4NzQyMzQ4OX0.qQob-oPdMQdMpV3ULxcSNtRkdgeCxNcYdlNCfTF2Dyw';
+// 使用与 src/lib/supabase.ts 相同的环境变量约定（不再硬编码 URL/Key）
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const SUPABASE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  '';
 
 // ============================================
 // 类型定义

@@ -30,8 +30,12 @@ const CONFIG = {
   API_HOST: 'v3.football.api-sports.io',
   API_KEY: process.env.API_FOOTBALL_KEY || '',
 
+  // Supabase：统一使用 SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY，旧变量名保持兼容
   SUPABASE_URL: process.env.SUPABASE_URL || '',
-  SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY || '',
+  SUPABASE_SERVICE_ROLE_KEY:
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    '',
 
   // 更新间隔（毫秒）
   UPDATE_INTERVAL_MS: 60000,
@@ -50,11 +54,9 @@ const CONFIG = {
 // 初始化
 // ============================================================
 
-const supabase = createClient(
-  CONFIG.SUPABASE_URL,
-  CONFIG.SUPABASE_SERVICE_KEY,
-  { auth: { persistSession: false } }
-);
+const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 
 // ============================================================
 // 工具函数

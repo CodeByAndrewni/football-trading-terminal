@@ -19,6 +19,21 @@ export interface League {
   round?: string;
 }
 
+// Supabase Teams 维表映射
+export interface TeamRecord {
+  id: number;
+  name: string;
+  country: string | null;
+  code: string | null;
+  logo: string | null;
+  founded: number | null;
+  national: boolean | null;
+  venue_name: string | null;
+  venue_city: string | null;
+  league_ids?: number[] | null;
+  updated_at?: string;
+}
+
 export interface Goals {
   home: number | null;
   away: number | null;

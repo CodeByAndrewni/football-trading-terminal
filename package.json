@@ -19,7 +19,8 @@
     "ingest:historical": "bun run scripts/ingest/historical-download.ts",
     "ingest:daily": "bun run scripts/ingest/daily-incremental.ts",
     "ingest:live": "bun run scripts/ingest/live-update.ts",
-    "ingest:live:once": "bun run scripts/ingest/live-update.ts --once"
+    "ingest:live:once": "bun run scripts/ingest/live-update.ts --once",
+    "sync:teams": "bun run scripts/sync_teams.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",
