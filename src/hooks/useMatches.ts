@@ -277,6 +277,46 @@ export function useLiveMatchesAdvanced(options?: {
     console.log('[RAW_MATCHES_SAMPLE] unique status values (all matches):', uniqueStatuses);
   }
 
+  // 诊断：id=1508863 单场结构（排查盘口/统计不显示）
+  const diagMatch = matches.find((m: { id?: number }) => m.id === 1508863);
+  if (diagMatch) {
+    const m = diagMatch as import('../data/advancedMockData').AdvancedMatch;
+    console.log('[MATCH_1508863]', {
+      id: m.id,
+      league: m.league,
+      status: m.status,
+      minute: m.minute,
+      homeName: m.home?.name,
+      awayName: m.away?.name,
+      homeScore: m.home?.score,
+      awayScore: m.away?.score,
+      initialHandicap: m.initialHandicap,
+      initialOverUnder: m.initialOverUnder,
+      stats: m.stats
+        ? {
+            _realDataAvailable: m.stats._realDataAvailable,
+            shots: m.stats.shots,
+            shotsOnTarget: m.stats.shotsOnTarget,
+            possession: m.stats.possession,
+            corners: m.corners ?? null,
+          }
+        : null,
+      odds: m.odds
+        ? {
+            _fetch_status: m.odds._fetch_status,
+            _is_live: m.odds._is_live,
+            _source: m.odds._source,
+            handicap_value: m.odds.handicap?.value,
+            handicap_home: m.odds.handicap?.home,
+            handicap_away: m.odds.handicap?.away,
+            overUnder_total: m.odds.overUnder?.total,
+            overUnder_over: m.odds.overUnder?.over,
+            overUnder_under: m.odds.overUnder?.under,
+          }
+        : null,
+    });
+  }
+
   // 统一“进行中”定义：只排除未开始(NS)和已结束(FT)，
   // 其余状态（1h/2h/ht/live/aet/pen 等）全部视为进行中，避免列表为空。
   const liveMatches = matches.filter((m) => {

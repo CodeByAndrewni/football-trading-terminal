@@ -186,6 +186,138 @@ interface MomentumFactorResult {
   _dataQuality: 'real' | 'partial' | 'unavailable';
 }
 
+// ============================================
+// 纯统计通道：基于实时 stats + 初盘兑现度
+// ============================================
+
+interface StatsChannel {
+  totalScore: number;
+  shotsScore: number;
+  possessionScore: number;
+  eventsScore: number;
+  lineRealizationScore: number;
+  reasons: string[];
+}
+
+function calculateStatsChannel(match: AdvancedMatch): StatsChannel | null {
+  // 前提：有初始盘口，否则不计算
+  const initHandicap = match.initialHandicap ?? match.home.handicap ?? null;
+  if (initHandicap == null) return null;
+
+  const minute = match.minute ?? 0;
+  const homeGoals = match.home.score ?? 0;
+  const awayGoals = match.away.score ?? 0;
+
+  const stats = match.stats;
+  if (!stats || stats._realDataAvailable === false) return null;
+
+  let shotsScore = 0;
+  let possessionScore = 0;
+  let eventsScore = 0;
+  let lineRealizationScore = 0;
+  const reasons: string[] = [];
+
+  // 1) 射门压制分 (0-30)
+  const shotsTotalHome = typeof stats.shots?.home === 'number' ? stats.shots.home : null;
+  const shotsTotalAway = typeof stats.shots?.away === 'number' ? stats.shots.away : null;
+  const shotsOnHome = typeof stats.shotsOnTarget?.home === 'number' ? stats.shotsOnTarget.home : null;
+  const shotsOnAway = typeof stats.shotsOnTarget?.away === 'number' ? stats.shotsOnTarget.away : null;
+  const xgHome = typeof stats.xG?.home === 'number' ? stats.xG.home : null;
+  const xgAway = typeof stats.xG?.away === 'number' ? stats.xG.away : null;
+
+  if (
+    shotsTotalHome !== null &&
+    shotsTotalAway !== null &&
+    shotsOnHome !== null &&
+    shotsOnAway !== null
+  ) {
+    const shotsDiff = shotsTotalHome - shotsTotalAway;
+    const onDiff = shotsOnHome - shotsOnAway;
+    let score = 0;
+
+    // 简化规则：射门差 + 射正差越大，分越高，最大 30
+    score += Math.max(0, Math.min(20, shotsDiff * 2));
+    score += Math.max(0, Math.min(10, onDiff * 3));
+
+    if (xgHome !== null && xgAway !== null) {
+      const xgDiff = xgHome - xgAway;
+      score += Math.max(0, Math.min(5, xgDiff * 2));
+      reasons.push(`xG ${xgHome.toFixed(2)} - ${xgAway.toFixed(2)}`);
+    }
+
+    shotsScore = Math.min(30, score);
+    reasons.push(`射门 ${shotsTotalHome}-${shotsTotalAway}, 射正 ${shotsOnHome}-${shotsOnAway}`);
+  }
+
+  // 2) 控球压制分 (0-20)
+  const possHome = typeof stats.possession?.home === 'number' ? stats.possession.home : null;
+  const possAway = typeof stats.possession?.away === 'number' ? stats.possession.away : null;
+  if (possHome !== null && possAway !== null) {
+    const possDiff = possHome - possAway;
+    let score = 0;
+    if (possDiff > 5) {
+      score = Math.min(20, (possDiff - 5) * 0.5);
+    }
+    possessionScore = Math.max(0, score);
+    reasons.push(`控球 ${possHome.toFixed(1)}%-${possAway.toFixed(1)}%`);
+  }
+
+  // 3) 攻防事件分 (0-20)
+  const cornersHome = (match.corners?.home as number | undefined) ?? null;
+  const cornersAway = (match.corners?.away as number | undefined) ?? null;
+  let events = 0;
+
+  if (cornersHome !== null && cornersAway !== null) {
+    const cornerDiff = cornersHome - cornersAway;
+    events += Math.max(0, Math.min(10, cornerDiff * 1.5));
+    reasons.push(`角球 ${cornersHome}-${cornersAway}`);
+  }
+
+  const redHome = match.cards?.red?.home ?? 0;
+  const redAway = match.cards?.red?.away ?? 0;
+  if (redAway > redHome) {
+    events += 5;
+    reasons.push('对手红牌在身');
+  }
+
+  eventsScore = Math.min(20, events);
+
+  // 4) 初盘兑现度分 (0-30)
+  const isHomeFavorite = initHandicap < 0;
+  const favGoals = isHomeFavorite ? homeGoals : awayGoals;
+  const dogGoals = isHomeFavorite ? awayGoals : homeGoals;
+  const goalDiff = favGoals - dogGoals;
+
+  const absHandicap = Math.abs(initHandicap);
+  let expectedAtMinute = absHandicap * (minute / 90);
+  expectedAtMinute = Math.min(absHandicap, expectedAtMinute);
+
+  const shortfall = expectedAtMinute - goalDiff;
+  let lineScore = 0;
+  if (shortfall > 0) {
+    lineScore = Math.min(30, shortfall * 10);
+  }
+
+  lineRealizationScore = Math.max(0, lineScore);
+  reasons.push(
+    `初盘 ${initHandicap >= 0 ? `+${initHandicap}` : String(initHandicap)}, 当前比分 ${homeGoals}-${awayGoals}, ${minute}'`
+  );
+
+  const totalScore = Math.min(
+    100,
+    shotsScore + possessionScore + eventsScore + lineRealizationScore
+  );
+
+  return {
+    totalScore,
+    shotsScore,
+    possessionScore,
+    eventsScore,
+    lineRealizationScore,
+    reasons,
+  };
+}
+
 function calculateMomentumFactor(match: AdvancedMatch): MomentumFactorResult {
   const stats = match.stats;
   const minute = match.minute;
@@ -869,6 +1001,9 @@ export function calculateDynamicScore(
   // 计算置信度（使用动量数据质量）
   const confidence = calculateConfidence(match, historyFactor.dataAvailable, momentumFactor._dataQuality);
 
+  // 纯统计通道评分（不改变原有 totalScore，只作为并行参考线）
+  const statsChannel = calculateStatsChannel(match);
+
   return {
     totalScore,
     baseScore: BASE_SCORE,
@@ -878,6 +1013,7 @@ export function calculateDynamicScore(
     isStrongTeamBehind,
     alerts,
     confidence,
+    statsChannel,
     // STRICT MODE 标记
     _dataMode: 'STRICT_REAL_DATA' as const,
   } as ScoreResult;
@@ -961,6 +1097,9 @@ export function calculateDynamicScoreWithOdds(
     confidence = Math.min(100, confidence + 10); // 有赔率数据加10分置信度
   }
 
+  // 纯统计通道评分（不改变原有 totalScore，只作为并行参考线）
+  const statsChannel = calculateStatsChannel(match);
+
   return {
     totalScore,
     baseScore: BASE_SCORE,
@@ -970,6 +1109,7 @@ export function calculateDynamicScoreWithOdds(
     isStrongTeamBehind,
     alerts,
     confidence,
+    statsChannel,
     _dataMode: 'STRICT_REAL_DATA' as const,
   } as ScoreResult;
 }

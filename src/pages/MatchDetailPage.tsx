@@ -331,6 +331,9 @@ export function MatchDetailPage() {
             {/* 因子详情 - 仅在有评分时显示 */}
             {scoreResult && <FactorBreakdownPanel factors={scoreResult.factors} />}
 
+            {/* Stats 通道评分（仅展示，不参与排序/信号） */}
+            <StatsChannelPanel scoreResult={scoreResult} />
+
             {/* 换人分析 */}
             <SubstitutionAnalysis
               substitutions={matchData.substitutions}
@@ -918,6 +921,63 @@ function FactorBreakdownPanel({ factors }: { factors: ScoringFactors }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ============================================
+// Stats 通道评分面板（仅展示，不参与排序/信号）
+// ============================================
+function StatsChannelPanel({ scoreResult }: { scoreResult: ScoreResult | null }) {
+  const sc = scoreResult?.statsChannel;
+
+  return (
+    <div className="card">
+      <div className="flex items-center gap-2 mb-4">
+        <BarChart3 className="w-5 h-5 text-accent-primary" />
+        <h2 className="text-lg font-semibold text-text-primary">Stats 通道评分（不含赔率/历史）</h2>
+      </div>
+
+      {sc ? (
+        <>
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-text-secondary">总分</span>
+              <span className="font-mono text-lg font-bold text-text-primary">{sc.totalScore}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+              <div className="px-3 py-2 rounded-lg bg-bg-deepest">
+                <div className="text-text-muted text-xs">射门</div>
+                <div className="font-mono font-medium text-text-primary">{sc.shotsScore}</div>
+              </div>
+              <div className="px-3 py-2 rounded-lg bg-bg-deepest">
+                <div className="text-text-muted text-xs">控球</div>
+                <div className="font-mono font-medium text-text-primary">{sc.possessionScore}</div>
+              </div>
+              <div className="px-3 py-2 rounded-lg bg-bg-deepest">
+                <div className="text-text-muted text-xs">事件</div>
+                <div className="font-mono font-medium text-text-primary">{sc.eventsScore}</div>
+              </div>
+              <div className="px-3 py-2 rounded-lg bg-bg-deepest">
+                <div className="text-text-muted text-xs">兑现</div>
+                <div className="font-mono font-medium text-text-primary">{sc.lineRealizationScore}</div>
+              </div>
+            </div>
+          </div>
+          {sc.reasons.length > 0 && (
+            <div>
+              <div className="text-xs text-text-muted mb-2">说明</div>
+              <ul className="space-y-1 text-sm text-text-secondary">
+                {sc.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="text-sm text-text-muted">Stats 通道不可用</p>
+      )}
     </div>
   );
 }

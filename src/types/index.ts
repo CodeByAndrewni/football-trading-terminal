@@ -375,6 +375,16 @@ export interface ScoreResult {
   alerts: string[];             // 预警信息
   confidence: number;           // 置信度 (基于数据完整性)
 
+  // 纯统计通道评分（不包含赔率/历史，只看实时数据与初盘兑现度）
+  statsChannel?: {
+    totalScore: number;          // 0-100
+    shotsScore: number;          // 0-30 射门压制分
+    possessionScore: number;     // 0-20 控球压制分
+    eventsScore: number;         // 0-20 事件（角球/红牌等）分
+    lineRealizationScore: number; // 0-30 初盘兑现度分
+    reasons: string[];           // 文本解释
+  };
+
   // ============================================
   // STRICT REAL DATA MODE 标记
   // ============================================

@@ -140,6 +140,25 @@ export function HomePage() {
   // 数据获取
   const { data: matchesData, isLoading, error, refetch, liveMatches } = useLiveMatchesAdvanced();
   console.log('[RAW_MATCHES]', matchesData?.matches?.length, matchesData?.matches);
+  // 调试：id=1508863 单场结构
+  const rawMatches = matchesData?.matches ?? [];
+  const match1508863 = rawMatches.find((m: { id?: number }) => m.id === 1508863);
+  if (match1508863) {
+    const m = match1508863 as any;
+    console.log('[MATCH_1508863]', {
+      id: m.id,
+      status: m.status,
+      minute: m.minute,
+      home: m.home,
+      away: m.away,
+      initialHandicap: m.initialHandicap,
+      initialOverUnder: m.initialOverUnder,
+      stats: m.stats,
+      odds: m.odds,
+      unscoreable: m._unscoreable,
+      noStatsReason: m._noStatsReason,
+    });
+  }
   const refreshMatches = useRefreshMatches();
   const [nowString, setNowString] = useState(
     new Date().toLocaleTimeString('zh-CN', { hour12: false })

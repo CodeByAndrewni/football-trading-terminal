@@ -819,6 +819,19 @@ function HighSignalCard({
           </div>
         </div>
 
+        {/* Stats 通道概要（仅展示，不参与排序/信号） */}
+        <div className="mb-4 text-xs text-[#888]">
+          {match.scoreResult?.statsChannel ? (
+            <span>
+              Stats分: {match.scoreResult.statsChannel.totalScore}{' '}
+              (射门:{match.scoreResult.statsChannel.shotsScore} 控球:{match.scoreResult.statsChannel.possessionScore}{' '}
+              事件:{match.scoreResult.statsChannel.eventsScore} 兑现:{match.scoreResult.statsChannel.lineRealizationScore})
+            </span>
+          ) : (
+            <span>Stats 通道不可用</span>
+          )}
+        </div>
+
         {/* 走势 */}
         <div className="flex items-center gap-4 mb-4 px-3 py-2 bg-[#0d0d0d] rounded-lg text-sm">
           <span className="text-[#888]">近15分钟走势：</span>
@@ -909,6 +922,13 @@ function WatchCard({
         ))}
         <span className="px-2 py-0.5 bg-[#ffaa00]/10 text-[#ffaa00] rounded">观望</span>
       </div>
+      {match.scoreResult?.statsChannel ? (
+        <div className="mt-2 text-[10px] text-[#666]">
+          Stats分: {match.scoreResult.statsChannel.totalScore} (射门:{match.scoreResult.statsChannel.shotsScore} 控球:{match.scoreResult.statsChannel.possessionScore} 事件:{match.scoreResult.statsChannel.eventsScore} 兑现:{match.scoreResult.statsChannel.lineRealizationScore})
+        </div>
+      ) : (
+        <div className="mt-2 text-[10px] text-[#555]">Stats 通道不可用</div>
+      )}
     </div>
   );
 }
