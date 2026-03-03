@@ -290,6 +290,9 @@ export function MatchDetailPage() {
                 比赛基本信息可正常显示，评分功能将在数据完整后启用。
                 {unscoreableReason && <span className="text-text-muted ml-2">({unscoreableReason})</span>}
               </p>
+              <p className="text-xs text-text-muted mt-1">
+                统计不足，不评分（{unscoreableReason}）
+              </p>
             </div>
           </div>
         )}
@@ -324,6 +327,60 @@ export function MatchDetailPage() {
           <div className="xl:col-span-4 space-y-6">
             {/* 模拟下单面板 */}
             <SimulatedOrderPanel match={matchData} />
+
+            {/* ScoreResult 概览：数据 / 盘口健康度 */}
+            <div className="card text-xs text-text-secondary space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-accent-primary" />
+                  <span className="font-medium text-text-primary">数据 / 盘口健康度</span>
+                </div>
+              </div>
+              {scoreResult ? (
+                <div className="space-y-1">
+                  <div>
+                    <span className="text-text-muted mr-1">数据健康:</span>
+                    <span className="font-mono text-sm text-text-primary">
+                      {scoreResult.dataHealthScore ?? '--'}/100
+                    </span>
+                    <span className="ml-2">
+                      {scoreResult.dataHealthLevel === 'LOW'
+                        ? '统计不足'
+                        : scoreResult.dataHealthLevel === 'MEDIUM'
+                        ? '统计一般'
+                        : scoreResult.dataHealthLevel === 'HIGH'
+                        ? '统计良好'
+                        : '—'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted mr-1">盘口健康:</span>
+                    {scoreResult.oddsHealthScore != null && scoreResult.oddsHealthLevel ? (
+                      <>
+                        <span className="font-mono text-sm text-text-primary">
+                          {scoreResult.oddsHealthScore}/100
+                        </span>
+                        <span className="ml-2">
+                          {scoreResult.oddsHealthLevel === 'LOW'
+                            ? '盘口不可用'
+                            : scoreResult.oddsHealthLevel === 'MEDIUM'
+                            ? '盘口参考'
+                            : scoreResult.oddsHealthLevel === 'HIGH'
+                            ? '盘口健康'
+                            : '—'}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-text-muted">未计算（当前评分未接入赔率因子）</span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-accent-warning">
+                  统计不足，不评分（{unscoreableReason}）
+                </div>
+              )}
+            </div>
 
             {/* 雷达图 - 仅在有评分时显示 */}
             {scoreResult && <FactorRadarChart factors={scoreResult.factors} />}

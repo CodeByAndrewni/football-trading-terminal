@@ -123,8 +123,8 @@ async function syncTeams(): Promise<void> {
     return;
   }
 
-  if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_SERVICE_KEY) {
-    console.error('[sync_teams] 缺少 SUPABASE_URL/SERVICE_KEY，退出。');
+  if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('[sync_teams] 缺少 SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY，退出。');
     return;
   }
 
@@ -183,7 +183,30 @@ async function syncTeams(): Promise<void> {
     } while (page <= totalPages);
   }
 
-  console.log('[sync_teams] 同步完成');
+  console.log('[sync_teams] 同步完成，开始统计行数与示例记录...');
+
+  // 同步完成后，输出行数与部分示例，方便确认
+  const { count, error: countError } = await supabase
+    .from('teams')
+    .select('id', { count: 'exact', head: true });
+
+  if (countError) {
+    console.error('[sync_teams] 统计 teams 行数失败:', countError);
+  } else {
+    console.log('[sync_teams] teams 行数 =', count ?? 0);
+  }
+
+  const { data: sampleRows, error: sampleError } = await supabase
+    .from('teams')
+    .select('id, name, country, venue_name')
+    .order('id', { ascending: true })
+    .limit(5);
+
+  if (sampleError) {
+    console.error('[sync_teams] 获取示例记录失败:', sampleError);
+  } else {
+    console.log('[sync_teams] 示例记录前 5 行:', sampleRows);
+  }
 }
 
 // 入口

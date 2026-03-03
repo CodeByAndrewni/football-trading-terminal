@@ -392,6 +392,12 @@ export interface ScoreResult {
   // 赔率供应商是否完全无赔率（/odds 与 /odds/live 均为空）
   noOddsFromProvider?: boolean;
 
+  // 数据/盘口健康度（供 UI 标记“统计一般 / 盘口参考 / 盘口不可用”）
+  dataHealthScore?: number;     // 0-100，<50 视为统计不足
+  dataHealthLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+  oddsHealthScore?: number;     // 0-100，<40 视为盘口不可用
+  oddsHealthLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+
   // 纯统计通道评分（不包含赔率/历史，只看实时数据与初盘兑现度）
   statsChannel?: {
     totalScore: number;          // 0-100

@@ -14,6 +14,170 @@ export type { ScoringFactors, ScoreResult } from '../types';
 // 基础分
 const BASE_SCORE = 30;
 
+type HealthLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+interface DataHealthResult {
+  score: number;          // 0-100
+  level: HealthLevel;     // LOW / MEDIUM / HIGH
+  reasons: string[];
+}
+
+interface OddsHealthResult {
+  score: number;          // 0-100
+  level: HealthLevel;
+  reasons: string[];
+}
+
+// ============================================
+// 盘口健康评分（oddsHealthScore）
+// ============================================
+
+function calculateOddsHealth(
+  match: AdvancedMatch,
+  oddsAnalysis?: OddsAnalysis | null
+): OddsHealthResult {
+  const reasons: string[] = [];
+
+  // 完全无赔率或明确标记无赔率 → 直接 LOW
+  if (match.noOddsFromProvider) {
+    reasons.push('供应商完全无赔率');
+    return { score: 0, level: 'LOW', reasons };
+  }
+
+  const odds = (match as any).odds || null;
+
+  if (!odds && !oddsAnalysis) {
+    reasons.push('缺少赔率数据');
+    return { score: 0, level: 'LOW', reasons };
+  }
+
+  let score = 0;
+  let maxScore = 0;
+
+  function add(points: number, ok: boolean, okReason: string, missingReason: string) {
+    maxScore += points;
+    if (ok) {
+      score += points;
+      reasons.push(okReason);
+    } else {
+      reasons.push(missingReason);
+    }
+  }
+
+  const hasHandicap =
+    !!odds?.asianHandicap?.line ||
+    !!oddsAnalysis?.asianHandicap;
+  const hasOverUnder =
+    !!odds?.overUnder?.line ||
+    !!oddsAnalysis?.overUnder;
+  const hasMatchWinner =
+    !!odds?.matchWinner ||
+    !!oddsAnalysis?.matchWinner;
+
+  add(30, hasHandicap, '有让球盘', '缺少让球盘');
+  add(30, hasOverUnder, '有大小球盘', '缺少大小球盘');
+  add(10, hasMatchWinner, '有胜平负盘', '缺少胜平负盘');
+
+  const isLive = odds?._is_live === true || match.minute > 0;
+  add(15, isLive, '有临场/实时盘口', '仅有赛前盘口');
+
+  const minute = match.minute ?? 0;
+  const inReasonableWindow = minute >= 0 && minute <= 90;
+  add(15, inReasonableWindow, '盘口时间与比赛进程匹配', '盘口时间与比赛进程匹配度一般');
+
+  if (maxScore === 0) {
+    return { score: 0, level: 'LOW', reasons };
+  }
+
+  let normalized = Math.round((score / maxScore) * 100);
+  if (normalized > 100) normalized = 100;
+
+  let level: HealthLevel;
+  if (normalized < 40) level = 'LOW';
+  else if (normalized < 70) level = 'MEDIUM';
+  else level = 'HIGH';
+
+  return { score: normalized, level, reasons };
+}
+
+// ============================================
+// 数据健康评分（stats/dataHealthScore）
+// ============================================
+
+function calculateDataHealth(match: AdvancedMatch): DataHealthResult {
+  const stats = match.stats;
+  const reasons: string[] = [];
+
+  if (!stats) {
+    reasons.push('缺少 stats 对象');
+    return { score: 0, level: 'LOW', reasons };
+  }
+
+  let score = 0;
+  let maxScore = 0;
+
+  function addComponent(points: number, present: boolean, okReason: string, missingReason: string) {
+    maxScore += points;
+    if (present) {
+      score += points;
+      reasons.push(okReason);
+    } else {
+      reasons.push(missingReason);
+    }
+  }
+
+  const shotsPresent = !!stats.shots;
+  const shotsOnTargetPresent = !!stats.shotsOnTarget;
+  const xgPresent = !!stats.xG;
+  const possessionPresent = !!stats.possession;
+  const cornersPresent = !!stats.corners || !!match.corners;
+  const eventsPresent =
+    (match.events && match.events.length > 0) ||
+    !!match.cards ||
+    !!match.substitutions;
+
+  // 覆盖度（最多 80 分）
+  addComponent(20, shotsPresent, '有总射门数据', '缺少总射门数据');
+  addComponent(20, shotsOnTargetPresent, '有射正数据', '缺少射正数据');
+  addComponent(20, xgPresent, '有 xG 数据', '缺少 xG 数据');
+  addComponent(10, possessionPresent, '有控球率数据', '缺少控球率数据');
+  addComponent(10, cornersPresent, '有角球数据', '缺少角球数据');
+  addComponent(10, eventsPresent, '有比赛事件数据', '缺少事件数据');
+
+  // 质量分：随时间放宽要求（最多额外 +20）
+  const minute = match.minute ?? 0;
+  const totalShots = (stats.shots?.home || 0) + (stats.shots?.away || 0);
+  const xgTotal = (stats.xG?.home || 0) + (stats.xG?.away || 0);
+  const totalCorners = (match.corners?.home || 0) + (match.corners?.away || 0);
+
+  if (minute >= 60) {
+    maxScore += 20;
+    if (totalShots >= 15) score += 7;
+    if (xgTotal >= 2.0) score += 7;
+    if (totalCorners >= 6) score += 6;
+  } else if (minute >= 30) {
+    maxScore += 10;
+    if (totalShots >= 8) score += 5;
+    if (xgTotal >= 1.0) score += 5;
+  } else {
+    // 前 30 分钟，主要看是否有真实数据，不严控体量
+  }
+
+  if (maxScore === 0) {
+    return { score: 0, level: 'LOW', reasons };
+  }
+
+  let normalized = Math.round((score / maxScore) * 100);
+  if (normalized > 100) normalized = 100;
+
+  let level: HealthLevel;
+  if (normalized < 50) level = 'LOW';
+  else if (normalized < 70) level = 'MEDIUM';
+  else level = 'HIGH';
+
+  return { score: normalized, level, reasons };
+}
+
 // ============================================
 // STRICT REAL DATA MODE 检查
 // ============================================
@@ -631,6 +795,8 @@ interface OddsFactorResult {
     goalExpectation: 'HIGH' | 'MEDIUM' | 'LOW';
   };
   dataAvailable: boolean;
+  oddsHealthScore?: number;
+  oddsHealthLevel?: HealthLevel;
 }
 
 /**
@@ -644,6 +810,9 @@ export function calculateOddsFactor(
   oddsAnalysis?: OddsAnalysis | null,
   previousOdds?: OddsAnalysis | null
 ): OddsFactorResult {
+  // 先计算盘口健康度（主要基于是否有实时盘口、盘口类型齐全等）
+  const oddsHealth = calculateOddsHealth(match, oddsAnalysis);
+
   // 默认值
   const defaultDetails: {
     handicapTightening: boolean;
@@ -669,6 +838,8 @@ export function calculateOddsFactor(
       score: 0,
       details: defaultDetails,
       dataAvailable: false,
+      oddsHealthScore: oddsHealth.score,
+      oddsHealthLevel: oddsHealth.level,
     };
   }
 
@@ -760,10 +931,26 @@ export function calculateOddsFactor(
     }
   }
 
+  // 根据盘口健康度调整权重 / 可用性
+  let weight = 1;
+  let dataAvailable = true;
+  if (oddsHealth.score < 40) {
+    // 盘口不可用：赔率相关得分=0，标记 dataAvailable=false
+    weight = 0;
+    dataAvailable = false;
+  } else if (oddsHealth.score < 70) {
+    // 盘口参考：降低权重
+    weight = 0.5;
+  }
+
+  const finalScore = Math.max(-10, Math.min(20, score * weight));
+
   return {
-    score: Math.max(-10, Math.min(20, score)),
+    score: finalScore,
     details,
-    dataAvailable: true,
+    dataAvailable,
+    oddsHealthScore: oddsHealth.score,
+    oddsHealthLevel: oddsHealth.level,
   };
 }
 
@@ -993,6 +1180,19 @@ export function calculateDynamicScore(
     return null;
   }
 
+  // 数据健康评分：< 50 视为统计不足，直接标记为不可评分
+  const dataHealth = calculateDataHealth(match);
+  if (dataHealth.score < 50) {
+    match._unscoreable = true;
+    if (!match._noStatsReason) {
+      match._noStatsReason = 'DATA_HEALTH_LOW';
+    }
+    console.warn(
+      `[STRICT MODE] Match ${match.id} 数据健康不足 (dataHealthScore=${dataHealth.score}), skip scoring.`
+    );
+    return null;
+  }
+
   // 计算各因子
   const scoreFactor = calculateScoreFactor(match);
   const attackFactor = calculateAttackFactor(match);
@@ -1037,7 +1237,9 @@ export function calculateDynamicScore(
   const confidence = calculateConfidence(match, historyFactor.dataAvailable, momentumFactor._dataQuality);
 
   // 纯统计通道评分（不改变原有 totalScore，只作为并行参考线）
-  const statsChannel = calculateStatsChannel(match);
+  // 仅在数据健康度较好（>=60）且有初盘时计算
+  const statsChannel =
+    dataHealth.score >= 60 ? calculateStatsChannel(match) : null;
   if (match.id === 1508863 && statsChannel) {
     // 调试：确认 fixture=1508863 的 Stats 通道评分（含赔率因子版本）
     console.log('[STATS_CHANNEL_1508863]', match.id, statsChannel);
@@ -1056,6 +1258,8 @@ export function calculateDynamicScore(
     isStrongTeamBehind,
     alerts,
     confidence,
+    dataHealthScore: dataHealth.score,
+    dataHealthLevel: dataHealth.level,
     statsChannel,
     // STRICT MODE 标记
     _dataMode: 'STRICT_REAL_DATA' as const,
@@ -1083,6 +1287,19 @@ export function calculateDynamicScoreWithOdds(
   const unscoreableReason = checkScoreability(match);
   if (unscoreableReason) {
     console.warn(`[STRICT MODE] Match ${match.id} (${match.home.name} vs ${match.away.name}) unscoreable: ${unscoreableReason}`);
+    return null;
+  }
+
+  // 数据健康评分：< 50 视为统计不足，直接标记为不可评分
+  const dataHealth = calculateDataHealth(match);
+  if (dataHealth.score < 50) {
+    match._unscoreable = true;
+    if (!match._noStatsReason) {
+      match._noStatsReason = 'DATA_HEALTH_LOW';
+    }
+    console.warn(
+      `[STRICT MODE] Match ${match.id} 数据健康不足 (dataHealthScore=${dataHealth.score}), skip scoring with odds.`
+    );
     return null;
   }
 
@@ -1141,7 +1358,9 @@ export function calculateDynamicScoreWithOdds(
   }
 
   // 纯统计通道评分（不改变原有 totalScore，只作为并行参考线）
-  const statsChannel = calculateStatsChannel(match);
+  // 仅在数据健康度较好（>=60）且有初盘时计算
+  const statsChannel =
+    dataHealth.score >= 60 ? calculateStatsChannel(match) : null;
 
   return {
     totalScore,
@@ -1152,6 +1371,10 @@ export function calculateDynamicScoreWithOdds(
     isStrongTeamBehind,
     alerts,
     confidence,
+    dataHealthScore: dataHealth.score,
+    dataHealthLevel: dataHealth.level,
+    oddsHealthScore: oddsFactor.oddsHealthScore,
+    oddsHealthLevel: oddsFactor.oddsHealthLevel,
     statsChannel,
     _dataMode: 'STRICT_REAL_DATA' as const,
   } as ScoreResult;

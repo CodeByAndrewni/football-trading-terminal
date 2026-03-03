@@ -777,15 +777,54 @@ function HighSignalCard({
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[#888] text-sm">信号强度</span>
+          {/* 数据/盘口健康标签 */}
+          <div className="flex items-center gap-1 mr-2">
+            {match.scoreResult?.dataHealthLevel && (
+              <span
+                className={
+                  match.scoreResult.dataHealthLevel === 'LOW'
+                    ? 'px-2 py-0.5 rounded-full bg-[#451414] text-[#ff9b9b] text-[10px]'
+                    : match.scoreResult.dataHealthLevel === 'MEDIUM'
+                    ? 'px-2 py-0.5 rounded-full bg-[#4a3a14] text-[#ffdf8a] text-[10px]'
+                    : 'px-2 py-0.5 rounded-full bg-[#123322] text-[#8cffb4] text-[10px]'
+                }
+              >
+                {match.scoreResult.dataHealthLevel === 'LOW'
+                  ? '统计不足'
+                  : match.scoreResult.dataHealthLevel === 'MEDIUM'
+                  ? '统计一般'
+                  : '统计良好'}
+              </span>
+            )}
+            {match.scoreResult?.oddsHealthLevel && (
+              <span
+                className={
+                  match.scoreResult.oddsHealthLevel === 'LOW'
+                    ? 'px-2 py-0.5 rounded-full bg-[#451414] text-[#ffd3d3] text-[10px]'
+                    : match.scoreResult.oddsHealthLevel === 'MEDIUM'
+                    ? 'px-2 py-0.5 rounded-full bg-[#4a3214] text-[#ffe2a8] text-[10px]'
+                    : 'px-2 py-0.5 rounded-full bg-[#123034] text-[#a0f0ff] text-[10px]'
+                }
+              >
+                {match.scoreResult.oddsHealthLevel === 'LOW'
+                  ? '盘口不可用'
+                  : match.scoreResult.oddsHealthLevel === 'MEDIUM'
+                  ? '盘口参考'
+                  : '盘口健康'}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
-            <div className="w-24 h-3 bg-[#1a1a1a] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[#ff4444] to-[#ff8800] rounded-full"
-                style={{ width: `${signalStrength}%` }}
-              />
+            <span className="text-[#888] text-sm">信号强度</span>
+            <div className="flex items-center gap-2">
+              <div className="w-24 h-3 bg-[#1a1a1a] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#ff4444] to-[#ff8800] rounded-full"
+                  style={{ width: `${signalStrength}%` }}
+                />
+              </div>
+              <span className="text-2xl font-bold text-[#ff4444]">{signalStrength}</span>
             </div>
-            <span className="text-2xl font-bold text-[#ff4444]">{signalStrength}</span>
           </div>
         </div>
       </div>
@@ -852,6 +891,43 @@ function HighSignalCard({
                   数据不完整，分数仅供参考。
                 </div>
               )}
+              {/* 数据/盘口健康标签（补充展示） */}
+              <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
+                {match.scoreResult.dataHealthLevel && (
+                  <span
+                    className={
+                      match.scoreResult.dataHealthLevel === 'LOW'
+                        ? 'px-2 py-0.5 rounded bg-[#2e1616] text-[#ff9999]'
+                        : match.scoreResult.dataHealthLevel === 'MEDIUM'
+                        ? 'px-2 py-0.5 rounded bg-[#2e2814] text-[#ffdd99]'
+                        : 'px-2 py-0.5 rounded bg-[#13271a] text-[#9dffb8]'
+                    }
+                  >
+                    {match.scoreResult.dataHealthLevel === 'LOW'
+                      ? '统计不足'
+                      : match.scoreResult.dataHealthLevel === 'MEDIUM'
+                      ? '统计一般'
+                      : '统计良好'}
+                  </span>
+                )}
+                {match.scoreResult.oddsHealthLevel && (
+                  <span
+                    className={
+                      match.scoreResult.oddsHealthLevel === 'LOW'
+                        ? 'px-2 py-0.5 rounded bg-[#2e1616] text-[#ffc4c4]'
+                        : match.scoreResult.oddsHealthLevel === 'MEDIUM'
+                        ? 'px-2 py-0.5 rounded bg-[#2e2414] text-[#ffe0a8]'
+                        : 'px-2 py-0.5 rounded bg-[#12252b] text-[#a0f0ff]'
+                    }
+                  >
+                    {match.scoreResult.oddsHealthLevel === 'LOW'
+                      ? '盘口不可用'
+                      : match.scoreResult.oddsHealthLevel === 'MEDIUM'
+                      ? '盘口参考'
+                      : '盘口健康'}
+                  </span>
+                )}
+              </div>
             </>
           ) : (
             <span>Stats 通道不可用</span>
@@ -968,6 +1044,43 @@ function WatchCard({
               数据不完整，分数仅供参考。
             </div>
           )}
+          {/* 数据/盘口健康标签 */}
+          <div className="flex flex-wrap gap-1.5 mt-1">
+            {match.scoreResult.dataHealthLevel && (
+              <span
+                className={
+                  match.scoreResult.dataHealthLevel === 'LOW'
+                    ? 'px-2 py-0.5 rounded bg-[#2e1616] text-[#ff9999]'
+                    : match.scoreResult.dataHealthLevel === 'MEDIUM'
+                    ? 'px-2 py-0.5 rounded bg-[#2e2814] text-[#ffdd99]'
+                    : 'px-2 py-0.5 rounded bg-[#13271a] text-[#9dffb8]'
+                }
+              >
+                {match.scoreResult.dataHealthLevel === 'LOW'
+                  ? '统计不足'
+                  : match.scoreResult.dataHealthLevel === 'MEDIUM'
+                  ? '统计一般'
+                  : '统计良好'}
+              </span>
+            )}
+            {match.scoreResult.oddsHealthLevel && (
+              <span
+                className={
+                  match.scoreResult.oddsHealthLevel === 'LOW'
+                    ? 'px-2 py-0.5 rounded bg-[#2e1616] text-[#ffc4c4]'
+                    : match.scoreResult.oddsHealthLevel === 'MEDIUM'
+                    ? 'px-2 py-0.5 rounded bg-[#2e2414] text-[#ffe0a8]'
+                    : 'px-2 py-0.5 rounded bg-[#12252b] text-[#a0f0ff]'
+                }
+              >
+                {match.scoreResult.oddsHealthLevel === 'LOW'
+                  ? '盘口不可用'
+                  : match.scoreResult.oddsHealthLevel === 'MEDIUM'
+                  ? '盘口参考'
+                  : '盘口健康'}
+              </span>
+            )}
+          </div>
         </div>
       ) : (
         <div className="mt-2 text-[10px] text-[#555]">Stats 通道不可用</div>
@@ -982,6 +1095,18 @@ function LowCard({ match }: { match: MatchWithSignal }) {
       {match.home.name.slice(0, 4)} {match.home.score}:{match.away.score} {match.away.name.slice(0, 4)}
       <span className="text-[#4488ff] ml-1">{match.signalStrength}</span>
       <span className="text-[#444] mx-1">│</span>
+      {match.scoreResult?.dataHealthLevel === 'LOW' && (
+        <span className="text-[#ff9999] text-[11px] mr-1">统不足</span>
+      )}
+      {match.scoreResult?.dataHealthLevel === 'MEDIUM' && (
+        <span className="text-[#ffdd99] text-[11px] mr-1">统一般</span>
+      )}
+      {match.scoreResult?.oddsHealthLevel === 'LOW' && (
+        <span className="text-[#ffb4b4] text-[11px]">盘不可用</span>
+      )}
+      {match.scoreResult?.oddsHealthLevel === 'MEDIUM' && (
+        <span className="text-[#ffd58a] text-[11px]">盘参考</span>
+      )}
     </span>
   );
 }
