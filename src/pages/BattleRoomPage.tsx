@@ -33,6 +33,7 @@ import {
 } from '../services/signalSettlement';
 import { extractReasonsWithDetails, getReasonLabels, type ReasonItem } from '../services/reasonExtractor';
 import { useSignalSettlement } from '../hooks/useSignalSettlement';
+import { getWatchlist } from '../services/battleRoomWatchlist';
 
 // ============================================
 // 测试模式配置
@@ -154,38 +155,63 @@ export function BattleRoomPage() {
   // 处理比赛数据
   const processedMatches: MatchWithSignal[] = useMemo(() => {
     const rawMatches = matchesData?.matches ?? [];
+    const watchlistIds = new Set<number>(getWatchlist());
     const result: MatchWithSignal[] = [];
 
     for (const match of rawMatches) {
+      // 仅展示在 watchlist 中的比赛（最简版手动添加）
+      if (!watchlistIds.has(match.id)) {
+        continue;
+      }
       // ⚠️ Guard：供应商无赔率的比赛只作为 stats 参考场，不进入 Battle Room 机会/信号流
       if (match.noOddsFromProvider) {
         continue;
       }
 
       const scoreResult = calculateDynamicScore(match);
-      if (!scoreResult) continue;
 
-      // 计算信号强度
-      const signalResult = calculateSignalStrength(match, scoreResult);
+      let effectiveScoreResult = scoreResult;
+      let signalResult: SignalStrengthResult | null = null;
 
-      // Hysteresis 处理
-      const { tier: stableTier, isUpgrade } = updateTier(match.id, signalResult.signalStrength);
+      if (scoreResult) {
+        signalResult = calculateSignalStrength(match, scoreResult);
+      }
+
+      // 计算信号强度和分档（评分失败时降级为 low，信号强度为 0）
+      const rawStrength = signalResult?.signalStrength ?? 0;
+      const stableTierBase = signalResult ? updateTier(match.id, rawStrength).tier : 'low';
+      const stableTier: SignalTier = stableTierBase;
+
+      // 评分失败时，给一个空的 Kelly 结果，避免后续访问报错
+      const kellyResult: KellyResult =
+        signalResult?.kellyResult ?? {
+          hasRealOdds: false,
+          oddsInfo: {
+            type: 'none',
+            line: null,
+            odds: null,
+          },
+          kellyFraction: null,
+          betSuggestion: null,
+        };
 
       // 提取理由
-      const reasons = extractReasonsWithDetails(scoreResult, match);
+      const reasons = effectiveScoreResult
+        ? extractReasonsWithDetails(effectiveScoreResult, match)
+        : [];
 
       // 如果升级到高信号，发出信号
-      if (isUpgrade && stableTier === 'high') {
+      if (signalResult && stableTier === 'high') {
         if (shouldEmitSignal(match.id, 'high_signal')) {
           const newSignal = createSignalRecord({
             fixtureId: match.id,
             matchName: `${match.home.name} vs ${match.away.name}`,
             minute: match.minute,
-            signalStrength: signalResult.signalStrength,
+            signalStrength: rawStrength,
             tier: stableTier,
             reasonsTop3: getReasonLabels(reasons),
-            odds: signalResult.kellyResult.oddsInfo.odds,
-            line: signalResult.kellyResult.oddsInfo.line,
+            odds: kellyResult.oddsInfo.odds,
+            line: kellyResult.oddsInfo.line,
           });
           addSignal(newSignal);
           setSignals(prev => [newSignal, ...prev].slice(0, 20));
@@ -199,11 +225,11 @@ export function BattleRoomPage() {
 
       result.push({
         ...match,
-        scoreResult,
-        signalResult,
-        signalStrength: signalResult.signalStrength,
+        scoreResult: effectiveScoreResult,
+        signalResult: signalResult as any,
+        signalStrength: rawStrength,
         tier: stableTier,
-        kellyResult: signalResult.kellyResult,
+        kellyResult,
         reasons,
       });
     }

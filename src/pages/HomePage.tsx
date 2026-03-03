@@ -26,6 +26,7 @@ import { MobileMenu } from '../components/layout/MobileMenu';
 import { AcceptanceReport } from '../components/home/AcceptanceReport';
 import { LateGameHunterPanel } from '../components/home/LateGameHunterPanel';
 import { LateHunterPanel } from '../components/home/LateHunterPanel';
+import { getWatchlist, addToWatchlist, removeFromWatchlist } from '../services/battleRoomWatchlist';
 // Phase 2: Live Scanner Engine
 import {
   scanMatches,
@@ -47,6 +48,8 @@ interface MatchWithScore extends AdvancedMatch {
 }
 
 type ViewMode = 'card' | 'table';
+
+type LiveViewMode = 'OPPORTUNITIES' | 'ALL_LIVE';
 
 type OddsMode = 'ALL' | 'WITH_LIVE' | 'WITHOUT_LIVE';
 
@@ -119,6 +122,7 @@ export function HomePage() {
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [watchedMatches, setWatchedMatches] = useState<Set<number>>(new Set());
+  const [liveViewMode, setLiveViewMode] = useState<LiveViewMode>('OPPORTUNITIES');
 
   // 简化的筛选器 - 默认显示全部比赛
   const [filters, setFilters] = useState<Filters>({
@@ -181,6 +185,14 @@ export function HomePage() {
     return () => clearInterval(id);
   }, []);
 
+  // 初始化 watchlist（从本地存储加载）
+  useEffect(() => {
+    const ids = getWatchlist();
+    if (ids && ids.length > 0) {
+      setWatchedMatches(new Set(ids));
+    }
+  }, []);
+
   // 是否使用新表格 V2
   const [useTableV2, setUseTableV2] = useState(true);
 
@@ -189,7 +201,17 @@ export function HomePage() {
 
   // 处理比赛数据 - 过滤已结束比赛，保存到历史
   const processedMatches = useMemo(() => {
-    const all = liveMatches ?? [];
+    const rawAll = matchesData?.matches ?? [];
+
+    const base: AdvancedMatch[] =
+      liveViewMode === 'ALL_LIVE'
+        ? rawAll.filter((m) => {
+            const s = String(m.status).toLowerCase();
+            return s !== 'ns' && s !== 'ft';
+          })
+        : (liveMatches ?? []);
+
+    const all = base;
 
     // 定义已结束状态（仅用于 UI 层防御性过滤）
     const finishedStatusSet = new Set<string | number | undefined>([
@@ -233,7 +255,9 @@ export function HomePage() {
     let filtered = liveWithScores;
 
     // ⚠️ Guard：供应商无赔率的比赛只作为 stats 参考场，不进入首页机会表 / 信号筛选
-    filtered = filtered.filter(m => !m.noOddsFromProvider);
+    if (liveViewMode !== 'ALL_LIVE') {
+      filtered = filtered.filter(m => !m.noOddsFromProvider);
+    }
 
     // 联赛筛选
     if (filters.league !== 'ALL') {
@@ -330,7 +354,7 @@ export function HomePage() {
     }
 
     return filtered;
-  }, [liveMatches, filters, scannerConfig]);
+  }, [liveMatches, matchesData, filters, scannerConfig, liveViewMode]);
 
   // Phase 2: 扫描器结果
   const scannerResults = useMemo(() => {
@@ -410,8 +434,13 @@ export function HomePage() {
   const toggleWatch = useCallback((matchId: number) => {
     setWatchedMatches(prev => {
       const next = new Set(prev);
-      if (next.has(matchId)) next.delete(matchId);
-      else next.add(matchId);
+      if (next.has(matchId)) {
+        next.delete(matchId);
+        removeFromWatchlist(matchId);
+      } else {
+        next.add(matchId);
+        addToWatchlist(matchId);
+      }
       return next;
     });
   }, []);
@@ -726,6 +755,32 @@ export function HomePage() {
             }`}
           >
             无滚球
+          </button>
+        </div>
+
+        {/* 视图模式：机会视图 / 全部 Live */}
+        <div className="flex items-center gap-1 text-xs ml-2">
+          <button
+            type="button"
+            onClick={() => setLiveViewMode('OPPORTUNITIES')}
+            className={`px-2 py-1 rounded font-medium transition-all ${
+              liveViewMode === 'OPPORTUNITIES'
+                ? 'bg-[#f97316] text-black'
+                : 'text-[#f97316] hover:bg-[#f97316]/15'
+            }`}
+          >
+            机会视图
+          </button>
+          <button
+            type="button"
+            onClick={() => setLiveViewMode('ALL_LIVE')}
+            className={`px-2 py-1 rounded font-medium transition-all ${
+              liveViewMode === 'ALL_LIVE'
+                ? 'bg-[#0ea5e9] text-black'
+                : 'text-[#0ea5e9] hover:bg-[#0ea5e9]/15'
+            }`}
+          >
+            全部 Live
           </button>
         </div>
 
