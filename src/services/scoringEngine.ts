@@ -33,11 +33,6 @@ function checkScoreability(match: AdvancedMatch): string | null {
     return 'NO_STATS_OBJECT';
   }
 
-  // 检查是否有真实数据标记
-  if (match.stats._realDataAvailable === false) {
-    return 'STATS_NOT_FROM_API';
-  }
-
   // 检查关键统计字段
   const stats = match.stats;
   if (stats.shots.home === 0 && stats.shots.away === 0 && match.minute > 10) {
@@ -197,6 +192,24 @@ interface StatsChannel {
   eventsScore: number;
   lineRealizationScore: number;
   reasons: string[];
+  // 原始统计快照，便于 UI/分析层访问完整 stats 字段
+  rawStats?: {
+    possession?: { home: number; away: number };
+    shots?: { home: number; away: number };
+    shotsOnTarget?: { home: number; away: number };
+    shotsOffTarget?: { home: number; away: number };
+    shotsInsideBox?: { home: number; away: number };
+    shotsOutsideBox?: { home: number; away: number };
+    xG?: { home: number; away: number };
+    attacks?: { home: number; away: number };
+    dangerousAttacks?: { home: number; away: number };
+    corners?: { home: number; away: number };
+  };
+  // 标记统计数据完整性，用于 STRICT 模式提示
+  flags?: {
+    missingCoreStats?: boolean;   // 核心字段（shots / shotsOnTarget / xG）严重缺失
+    missingAuxStats?: boolean;    // 辅助字段（attacks / 危险进攻 / 控球）缺失
+  };
 }
 
 function calculateStatsChannel(match: AdvancedMatch): StatsChannel | null {
@@ -209,13 +222,19 @@ function calculateStatsChannel(match: AdvancedMatch): StatsChannel | null {
   const awayGoals = match.away.score ?? 0;
 
   const stats = match.stats;
-  if (!stats || stats._realDataAvailable === false) return null;
+  if (!stats) return null;
 
   let shotsScore = 0;
   let possessionScore = 0;
   let eventsScore = 0;
   let lineRealizationScore = 0;
   const reasons: string[] = [];
+
+  // 统计可用性标记：核心 / 辅助是否至少有部分字段可用
+  const corePresent =
+    !!stats.shots || !!stats.shotsOnTarget || !!stats.xG;
+  const auxPresent =
+    !!stats.attacks || !!stats.dangerousAttacks || !!stats.possession;
 
   // 1) 射门压制分 (0-30)
   const shotsTotalHome = typeof stats.shots?.home === 'number' ? stats.shots.home : null;
@@ -315,6 +334,22 @@ function calculateStatsChannel(match: AdvancedMatch): StatsChannel | null {
     eventsScore,
     lineRealizationScore,
     reasons,
+    rawStats: {
+      possession: stats.possession,
+      shots: stats.shots,
+      shotsOnTarget: stats.shotsOnTarget,
+      shotsOffTarget: stats.shotsOffTarget,
+      shotsInsideBox: stats.shotsInsideBox,
+      shotsOutsideBox: stats.shotsOutsideBox,
+      xG: stats.xG,
+      attacks: stats.attacks,
+      dangerousAttacks: stats.dangerousAttacks,
+      corners: stats.corners,
+    },
+    flags: {
+      missingCoreStats: !corePresent,
+      missingAuxStats: !auxPresent,
+    },
   };
 }
 
@@ -1003,6 +1038,14 @@ export function calculateDynamicScore(
 
   // 纯统计通道评分（不改变原有 totalScore，只作为并行参考线）
   const statsChannel = calculateStatsChannel(match);
+  if (match.id === 1508863 && statsChannel) {
+    // 调试：确认 fixture=1508863 的 Stats 通道评分（含赔率因子版本）
+    console.log('[STATS_CHANNEL_1508863]', match.id, statsChannel);
+  }
+  if (match.id === 1508863 && statsChannel) {
+    // 调试：确认 fixture=1508863 的 Stats 通道评分
+    console.log('[STATS_CHANNEL_1508863]', match.id, statsChannel);
+  }
 
   return {
     totalScore,

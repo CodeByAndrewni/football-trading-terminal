@@ -96,8 +96,18 @@ export interface MatchStats {
   possession: { home: number; away: number };
   shots: { home: number; away: number };
   shotsOnTarget: { home: number; away: number };
+  // 射门细分（如果有则填充，否则可缺失）
+  shotsOffTarget?: { home: number; away: number };   // Shots off Goal
+  shotsInsideBox?: { home: number; away: number };   // Shots insidebox
+  shotsOutsideBox?: { home: number; away: number };  // Shots outsidebox
   xG: { home: number; away: number };
-  dangerousAttacks: { home: number; away: number };
+  // 进攻相关
+  attacks?: { home: number; away: number };          // Attacks
+  dangerousAttacks: { home: number; away: number };  // Dangerous Attacks
+  // 其他统计
+  corners?: { home: number; away: number };          // Corner Kicks
+  saves?: { home: number; away: number };            // Goalkeeper Saves
+  offsides?: { home: number; away: number };         // Offsides
   fouls?: { home: number; away: number };
   recentShots20min?: number; // 近20分钟总射门数（基于真实 events）
 
@@ -152,6 +162,8 @@ export interface AdvancedMatch {
   // 赛前初始盘口快照（仅来自 prematch odds，不随 live 盘口变化）
   initialHandicap?: number | null;
   initialOverUnder?: number | null;
+  /** 当 /odds 与 /odds/live 对该场次均返回空时为 true；任一有有效赔率则不设置或为 false */
+  noOddsFromProvider?: boolean;
   corners: { home: number; away: number; recent5min: number | null } | null;
   goalHistory?: GoalDistribution | null;  // Phase 2A: 允许 null
   killScore: number;

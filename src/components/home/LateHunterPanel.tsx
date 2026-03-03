@@ -56,6 +56,11 @@ export function LateHunterPanel({ matches, onMatchClick }: LateHunterPanelProps)
     const results: ProcessedMatch[] = [];
 
     for (const match of matches) {
+      // ⚠️ Guard：供应商无赔率的比赛只作为 stats 参考场，不进入尾盘猎手机会/信号流
+      if (match.noOddsFromProvider) {
+        continue;
+      }
+
       // 只处理 65+ 分钟且有统计数据的比赛
       if (!shouldTriggerLateModule(match.minute)) continue;
       if (!match.stats?._realDataAvailable) continue;

@@ -66,6 +66,8 @@ export interface AdvancedMatch {
   //       不会被 live odds 或后续盘口变化覆盖。
   initialHandicap?: number | null;
   initialOverUnder?: number | null;
+  /** 当 /odds 与 /odds/live 对该场次均返回空时为 true；任一有有效赔率则不设置或为 false */
+  noOddsFromProvider?: boolean;
 
   // === 事件数据 (来源: LiveEventsCore ← /fixtures/events) ===
   events?: MatchEventForUI[];
@@ -121,13 +123,22 @@ interface TeamInfo {
 
 // 前端期望的 stats 嵌套格式
 interface MatchStats {
-  possession: { home: number; away: number };       // Ball Possession
-  shots: { home: number; away: number };            // Total Shots
-  shotsOnTarget: { home: number; away: number };    // Shots on Goal
-  xG: { home: number; away: number };               // expected_goals
-  shotsInsideBox?: { home: number; away: number };  // Shots insidebox (新增)
-  fouls?: { home: number; away: number };           // Fouls
-  corners?: { home: number; away: number };         // Corner Kicks (新增到stats)
+  possession: { home: number; away: number };          // Ball Possession
+  shots: { home: number; away: number };               // Total Shots
+  shotsOnTarget: { home: number; away: number };       // Shots on Goal
+  xG: { home: number; away: number };                  // expected_goals
+  // 射门细分
+  shotsOffTarget?: { home: number; away: number };     // Shots off Goal
+  shotsInsideBox?: { home: number; away: number };     // Shots insidebox
+  shotsOutsideBox?: { home: number; away: number };    // Shots outsidebox
+  // 进攻相关
+  attacks?: { home: number; away: number };            // Attacks
+  dangerousAttacks?: { home: number; away: number };   // Dangerous Attacks
+  // 其他统计
+  fouls?: { home: number; away: number };              // Fouls
+  corners?: { home: number; away: number };            // Corner Kicks
+  saves?: { home: number; away: number };              // Goalkeeper Saves
+  offsides?: { home: number; away: number };           // Offsides
   _realDataAvailable?: boolean;
 }
 
@@ -266,21 +277,25 @@ function parseStatistics(
   statistics: TeamStatistics[] | undefined
 ): {
   // 射门相关 (来源: LiveStatsCore)
-  corners: { home: number; away: number };         // Corner Kicks
-  shots: { home: number; away: number };           // Total Shots
-  shotsOnTarget: { home: number; away: number };   // Shots on Goal
-  shotsOffTarget: { home: number; away: number };  // Shots off Goal
-  shotsInsideBox: { home: number; away: number };  // Shots insidebox
+  corners: { home: number; away: number };            // Corner Kicks
+  shots: { home: number; away: number };              // Total Shots
+  shotsOnTarget: { home: number; away: number };      // Shots on Goal
+  shotsOffTarget: { home: number; away: number };     // Shots off Goal
+  shotsInsideBox: { home: number; away: number };     // Shots insidebox
+  shotsOutsideBox: { home: number; away: number };    // Shots outsidebox
+  // 进攻相关
+  attacks: { home: number; away: number };            // Attacks
+  dangerousAttacks: { home: number; away: number };   // Dangerous Attacks
   // 控球/犯规
-  possession: { home: number; away: number };      // Ball Possession
-  fouls: { home: number; away: number };           // Fouls
+  possession: { home: number; away: number };         // Ball Possession
+  fouls: { home: number; away: number };              // Fouls
   // 牌
-  yellowCards: { home: number; away: number };     // Yellow Cards
-  redCards: { home: number; away: number };        // Red Cards
+  yellowCards: { home: number; away: number };        // Yellow Cards
+  redCards: { home: number; away: number };           // Red Cards
   // 其他
-  offsides: { home: number; away: number };        // Offsides
-  saves: { home: number; away: number };           // Goalkeeper Saves
-  xG: { home: number; away: number };              // expected_goals
+  offsides: { home: number; away: number };           // Offsides
+  saves: { home: number; away: number };              // Goalkeeper Saves
+  xG: { home: number; away: number };                 // expected_goals
 } | null {
   if (!statistics || statistics.length < 2) {
     return null;
@@ -325,6 +340,19 @@ function parseStatistics(
     shotsInsideBox: {
       home: getStat(homeStats, 'Shots insidebox'),
       away: getStat(awayStats, 'Shots insidebox'),
+    },
+    shotsOutsideBox: {
+      home: getStat(homeStats, 'Shots outsidebox'),
+      away: getStat(awayStats, 'Shots outsidebox'),
+    },
+    // === 进攻相关 ===
+    attacks: {
+      home: getStat(homeStats, 'Attacks'),
+      away: getStat(awayStats, 'Attacks'),
+    },
+    dangerousAttacks: {
+      home: getStat(homeStats, 'Dangerous Attacks'),
+      away: getStat(awayStats, 'Dangerous Attacks'),
     },
     // === 控球/犯规 ===
     possession: {
@@ -901,9 +929,15 @@ export function aggregateMatches(
             shots: parsed.shots,
             shotsOnTarget: parsed.shotsOnTarget,
             xG: parsed.xG,
+            shotsOffTarget: parsed.shotsOffTarget,
             shotsInsideBox: parsed.shotsInsideBox,
+            shotsOutsideBox: parsed.shotsOutsideBox,
+            attacks: parsed.attacks,
+            dangerousAttacks: parsed.dangerousAttacks,
             fouls: parsed.fouls,
             corners: parsed.corners,
+            saves: parsed.saves,
+            offsides: parsed.offsides,
             _realDataAvailable: true,
           };
 
@@ -931,7 +965,12 @@ export function aggregateMatches(
       const liveOdds = liveOddsMap.get(fixtureId);
       const prematchOdds = prematchOddsMap.get(fixtureId);
 
-      // 解析实时赔率和赛前赔率
+      // 判断供应商是否“完全无赔率”（/odds 与 /odds/live 均返回空数组）
+      const hasLiveOddsResponse = !!(liveOdds && liveOdds.length > 0);
+      const hasPrematchOddsResponse = !!(prematchOdds && prematchOdds.length > 0);
+      const noOddsFromProvider = !hasLiveOddsResponse && !hasPrematchOddsResponse;
+
+      // 解析实时赔率和赛前赔率（只要任一端点有可用的欧赔 / 亚盘 / 大小球，即认为供应商“有赔率”）
       const liveOddsInfo = parseLiveOdds(liveOdds);
       const prematchOddsInfo = parsePrematchOdds(prematchOdds);
 
@@ -953,6 +992,14 @@ export function aggregateMatches(
       } else {
         match.odds = createEmptyOdds('暂无实时赔率');
         match._oddsSource = null;
+      }
+
+      // 当两个端点响应都为空数组时，明确标记为供应商无赔率
+      if (noOddsFromProvider) {
+        match.noOddsFromProvider = true;
+      } else if (odds) {
+        // 只要有任一端点给出有效欧赔/亚盘/大小球，就认为“有赔率”
+        match.noOddsFromProvider = false;
       }
 
       // 赛前初盘快照：仅从 prematch odds 中提取，不受 live odds 影响

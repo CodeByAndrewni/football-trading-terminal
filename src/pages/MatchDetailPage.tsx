@@ -332,7 +332,7 @@ export function MatchDetailPage() {
             {scoreResult && <FactorBreakdownPanel factors={scoreResult.factors} />}
 
             {/* Stats 通道评分（仅展示，不参与排序/信号） */}
-            <StatsChannelPanel scoreResult={scoreResult} />
+            <StatsChannelPanel scoreResult={scoreResult} match={matchData} />
 
             {/* 换人分析 */}
             <SubstitutionAnalysis
@@ -928,7 +928,7 @@ function FactorBreakdownPanel({ factors }: { factors: ScoringFactors }) {
 // ============================================
 // Stats 通道评分面板（仅展示，不参与排序/信号）
 // ============================================
-function StatsChannelPanel({ scoreResult }: { scoreResult: ScoreResult | null }) {
+function StatsChannelPanel({ scoreResult, match }: { scoreResult: ScoreResult | null; match: AdvancedMatch }) {
   const sc = scoreResult?.statsChannel;
 
   return (
@@ -947,31 +947,67 @@ function StatsChannelPanel({ scoreResult }: { scoreResult: ScoreResult | null })
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
               <div className="px-3 py-2 rounded-lg bg-bg-deepest">
-                <div className="text-text-muted text-xs">射门</div>
+                <div className="text-text-muted text-xs">射门压制</div>
                 <div className="font-mono font-medium text-text-primary">{sc.shotsScore}</div>
+                {sc.reasons.find(r => r.includes('射门') || r.includes('xG')) && (
+                  <div className="mt-1 text-[11px] text-text-muted truncate">
+                    {sc.reasons.find(r => r.includes('射门') || r.includes('xG'))}
+                  </div>
+                )}
               </div>
               <div className="px-3 py-2 rounded-lg bg-bg-deepest">
-                <div className="text-text-muted text-xs">控球</div>
+                <div className="text-text-muted text-xs">场面主动（控球）</div>
                 <div className="font-mono font-medium text-text-primary">{sc.possessionScore}</div>
+                {sc.reasons.find(r => r.includes('控球')) && (
+                  <div className="mt-1 text-[11px] text-text-muted truncate">
+                    {sc.reasons.find(r => r.includes('控球'))}
+                  </div>
+                )}
               </div>
               <div className="px-3 py-2 rounded-lg bg-bg-deepest">
-                <div className="text-text-muted text-xs">事件</div>
+                <div className="text-text-muted text-xs">事件压力</div>
                 <div className="font-mono font-medium text-text-primary">{sc.eventsScore}</div>
+                {sc.reasons.find(r => r.includes('角球') || r.includes('红牌')) && (
+                  <div className="mt-1 text-[11px] text-text-muted truncate">
+                    {sc.reasons.find(r => r.includes('角球') || r.includes('红牌'))}
+                  </div>
+                )}
               </div>
               <div className="px-3 py-2 rounded-lg bg-bg-deepest">
-                <div className="text-text-muted text-xs">兑现</div>
+                <div className="text-text-muted text-xs">初盘兑现</div>
                 <div className="font-mono font-medium text-text-primary">{sc.lineRealizationScore}</div>
+                {sc.reasons.find(r => r.includes('盘口') || r.includes('让球')) && (
+                  <div className="mt-1 text-[11px] text-text-muted truncate">
+                    {sc.reasons.find(r => r.includes('盘口') || r.includes('让球'))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
+
+          {/* 全局说明列表 */}
           {sc.reasons.length > 0 && (
-            <div>
-              <div className="text-xs text-text-muted mb-2">说明</div>
-              <ul className="space-y-1 text-sm text-text-secondary">
+            <div className="mt-2">
+              <div className="text-xs text-text-muted mb-1">综合说明</div>
+              <ul className="space-y-1 text-xs text-text-secondary">
                 {sc.reasons.map((r, i) => (
-                  <li key={i}>{r}</li>
+                  <li key={i}>· {r}</li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {/* 仅 stats 无赔率提示 */}
+          {match.noOddsFromProvider && (
+            <div className="mt-3 text-xs text-accent-warning">
+              仅有 stats，无赔率（供应商未提供盘口），仅作场面参考。
+            </div>
+          )}
+
+          {/* 数据不完整提示 */}
+          {(sc.flags?.missingCoreStats || sc.flags?.missingAuxStats) && (
+            <div className="mt-1 text-xs text-accent-warning/80">
+              数据不完整，分数仅供参考。
             </div>
           )}
         </>

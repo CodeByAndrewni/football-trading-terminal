@@ -264,6 +264,9 @@ export function TerminalPage() {
     // 筛选
     let filtered = withScores.filter(m => m.scoreResult !== null);
 
+    // ⚠️ Guard：供应商无赔率的比赛只作为 stats 参考场，不进入终端页机会/推荐列表
+    filtered = filtered.filter(m => !m.noOddsFromProvider);
+
     if (filters.league !== 'ALL') {
       filtered = filtered.filter(m =>
         m.league === filters.league ||

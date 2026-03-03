@@ -319,7 +319,11 @@ export function useLiveMatchesAdvanced(options?: {
 
   // 统一“进行中”定义：只排除未开始(NS)和已结束(FT)，
   // 其余状态（1h/2h/ht/live/aet/pen 等）全部视为进行中，避免列表为空。
+  // ⚠️ Guard：供应商无赔率的比赛（noOddsFromProvider）只作为 stats 参考场，不进入 live 机会列表。
   const liveMatches = matches.filter((m) => {
+    if (m.noOddsFromProvider) {
+      return false;
+    }
     const s = String(m.status).toLowerCase();
     return s !== 'ns' && s !== 'ft';
   });

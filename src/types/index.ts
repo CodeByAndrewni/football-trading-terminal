@@ -374,6 +374,8 @@ export interface ScoreResult {
   isStrongTeamBehind: boolean;  // 强队落后标记
   alerts: string[];             // 预警信息
   confidence: number;           // 置信度 (基于数据完整性)
+  // 赔率供应商是否完全无赔率（/odds 与 /odds/live 均为空）
+  noOddsFromProvider?: boolean;
 
   // 纯统计通道评分（不包含赔率/历史，只看实时数据与初盘兑现度）
   statsChannel?: {
@@ -383,6 +385,24 @@ export interface ScoreResult {
     eventsScore: number;         // 0-20 事件（角球/红牌等）分
     lineRealizationScore: number; // 0-30 初盘兑现度分
     reasons: string[];           // 文本解释
+    // 原始统计快照，便于前端访问完整 stats 字段
+    rawStats?: {
+      possession?: { home: number; away: number };
+      shots?: { home: number; away: number };
+      shotsOnTarget?: { home: number; away: number };
+      shotsOffTarget?: { home: number; away: number };
+      shotsInsideBox?: { home: number; away: number };
+      shotsOutsideBox?: { home: number; away: number };
+      xG?: { home: number; away: number };
+      attacks?: { home: number; away: number };
+      dangerousAttacks?: { home: number; away: number };
+      corners?: { home: number; away: number };
+    };
+    // 统计完整性标记（用于“数据源不完整，仅作参考”提示）
+    flags?: {
+      missingCoreStats?: boolean;
+      missingAuxStats?: boolean;
+    };
   };
 
   // ============================================

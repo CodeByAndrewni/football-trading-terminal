@@ -54,6 +54,11 @@ export function LateGameHunterPanel({ matches, onMatchClick }: LateGameHunterPan
     const results: LateGameMatch[] = [];
 
     for (const match of matches) {
+      // ⚠️ Guard：供应商无赔率的比赛只作为 stats 参考场，不进入尾盘猎手机会列表
+      if (match.noOddsFromProvider) {
+        continue;
+      }
+
       const phase = getLateModulePhase(match.minute);
 
       // 只处理 65+ 分钟的比赛

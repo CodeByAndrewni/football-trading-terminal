@@ -157,6 +157,11 @@ export function BattleRoomPage() {
     const result: MatchWithSignal[] = [];
 
     for (const match of rawMatches) {
+      // ⚠️ Guard：供应商无赔率的比赛只作为 stats 参考场，不进入 Battle Room 机会/信号流
+      if (match.noOddsFromProvider) {
+        continue;
+      }
+
       const scoreResult = calculateDynamicScore(match);
       if (!scoreResult) continue;
 
@@ -820,13 +825,34 @@ function HighSignalCard({
         </div>
 
         {/* Stats 通道概要（仅展示，不参与排序/信号） */}
-        <div className="mb-4 text-xs text-[#888]">
+        <div className="mb-4 text-xs text-[#888] space-y-1">
           {match.scoreResult?.statsChannel ? (
-            <span>
-              Stats分: {match.scoreResult.statsChannel.totalScore}{' '}
-              (射门:{match.scoreResult.statsChannel.shotsScore} 控球:{match.scoreResult.statsChannel.possessionScore}{' '}
-              事件:{match.scoreResult.statsChannel.eventsScore} 兑现:{match.scoreResult.statsChannel.lineRealizationScore})
-            </span>
+            <>
+              <div>
+                Stats分: {match.scoreResult.statsChannel.totalScore}{' '}
+                (射门:{match.scoreResult.statsChannel.shotsScore} 控球:{match.scoreResult.statsChannel.possessionScore}{' '}
+                事件:{match.scoreResult.statsChannel.eventsScore} 兑现:{match.scoreResult.statsChannel.lineRealizationScore})
+              </div>
+              <div className="text-[10px] text-[#777]">
+                {/* 简要模块说明：从 reasons 中取前几条 */}
+                {match.scoreResult.statsChannel.reasons.slice(0, 2).map((r, i) => (
+                  <span key={i} className="mr-2">· {r}</span>
+                ))}
+              </div>
+              {/* 仅 stats 无赔率的提示 */}
+              {match.noOddsFromProvider && (
+                <div className="text-[10px] text-[#f97316]">
+                  仅有 stats，无赔率（供应商未提供盘口），仅作场面参考。
+                </div>
+              )}
+              {/* 数据不完整提示 */}
+              {(match.scoreResult.statsChannel.flags?.missingCoreStats ||
+                match.scoreResult.statsChannel.flags?.missingAuxStats) && (
+                <div className="text-[10px] text-[#ffaa00]">
+                  数据不完整，分数仅供参考。
+                </div>
+              )}
+            </>
           ) : (
             <span>Stats 通道不可用</span>
           )}
@@ -923,8 +949,25 @@ function WatchCard({
         <span className="px-2 py-0.5 bg-[#ffaa00]/10 text-[#ffaa00] rounded">观望</span>
       </div>
       {match.scoreResult?.statsChannel ? (
-        <div className="mt-2 text-[10px] text-[#666]">
-          Stats分: {match.scoreResult.statsChannel.totalScore} (射门:{match.scoreResult.statsChannel.shotsScore} 控球:{match.scoreResult.statsChannel.possessionScore} 事件:{match.scoreResult.statsChannel.eventsScore} 兑现:{match.scoreResult.statsChannel.lineRealizationScore})
+        <div className="mt-2 text-[10px] text-[#666] space-y-1">
+          <div>
+            Stats分: {match.scoreResult.statsChannel.totalScore} (射门:{match.scoreResult.statsChannel.shotsScore}{' '}
+            控球:{match.scoreResult.statsChannel.possessionScore} 事件:{match.scoreResult.statsChannel.eventsScore}{' '}
+            兑现:{match.scoreResult.statsChannel.lineRealizationScore})
+          </div>
+          {/* 仅 stats 无赔率提示 */}
+          {match.noOddsFromProvider && (
+            <div className="text-[10px] text-[#f97316]">
+              仅有 stats，无赔率（供应商未提供盘口），仅作场面参考。
+            </div>
+          )}
+          {/* 数据不完整提示 */}
+          {(match.scoreResult.statsChannel.flags?.missingCoreStats ||
+            match.scoreResult.statsChannel.flags?.missingAuxStats) && (
+            <div className="text-[10px] text-[#ffaa00]">
+              数据不完整，分数仅供参考。
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-2 text-[10px] text-[#555]">Stats 通道不可用</div>

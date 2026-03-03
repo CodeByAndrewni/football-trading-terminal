@@ -390,6 +390,7 @@ export function convertApiMatchToAdvanced(
   // 解析统计数据
   const hasRealStats = statistics && statistics.length >= 2;
   const stats: MatchStats | null = hasRealStats ? {
+    // 射门 & xG
     possession: {
       home: extractStatValue(statistics, 0, 'Ball Possession') || 50,
       away: extractStatValue(statistics, 1, 'Ball Possession') || 50,
@@ -402,17 +403,47 @@ export function convertApiMatchToAdvanced(
       home: extractStatValue(statistics, 0, 'Shots on Goal') || 0,
       away: extractStatValue(statistics, 1, 'Shots on Goal') || 0,
     },
+    shotsOffTarget: {
+      home: extractStatValue(statistics, 0, 'Shots off Goal') || 0,
+      away: extractStatValue(statistics, 1, 'Shots off Goal') || 0,
+    },
+    shotsInsideBox: {
+      home: extractStatValue(statistics, 0, 'Shots insidebox') || 0,
+      away: extractStatValue(statistics, 1, 'Shots insidebox') || 0,
+    },
+    shotsOutsideBox: {
+      home: extractStatValue(statistics, 0, 'Shots outsidebox') || 0,
+      away: extractStatValue(statistics, 1, 'Shots outsidebox') || 0,
+    },
     xG: {
       home: extractStatValue(statistics, 0, 'expected_goals') || 0,
       away: extractStatValue(statistics, 1, 'expected_goals') || 0,
+    },
+    // 进攻相关
+    attacks: {
+      home: extractStatValue(statistics, 0, 'Attacks') || 0,
+      away: extractStatValue(statistics, 1, 'Attacks') || 0,
     },
     dangerousAttacks: {
       home: extractStatValue(statistics, 0, 'Dangerous Attacks') || 0,
       away: extractStatValue(statistics, 1, 'Dangerous Attacks') || 0,
     },
+    // 其他统计
     fouls: {
       home: extractStatValue(statistics, 0, 'Fouls') || 0,
       away: extractStatValue(statistics, 1, 'Fouls') || 0,
+    },
+    corners: {
+      home: extractStatValue(statistics, 0, 'Corner Kicks') || 0,
+      away: extractStatValue(statistics, 1, 'Corner Kicks') || 0,
+    },
+    saves: {
+      home: extractStatValue(statistics, 0, 'Goalkeeper Saves') || 0,
+      away: extractStatValue(statistics, 1, 'Goalkeeper Saves') || 0,
+    },
+    offsides: {
+      home: extractStatValue(statistics, 0, 'Offsides') || 0,
+      away: extractStatValue(statistics, 1, 'Offsides') || 0,
     },
     _realDataAvailable: true,
   } : null;
@@ -480,7 +511,8 @@ export function convertApiMatchToAdvanced(
   const prematchOddsData = prematchOdds && prematchOdds.length > 0 ? parseLiveOdds(prematchOdds[0], minute) : null;
   const hasPrematchOdds = !!(prematchOddsData && prematchOddsData._raw_available);
 
-
+  // 判断供应商是否“完全无赔率”（/odds 与 /odds/live 均返回空数组或无有效欧赔/亚盘/大小球）
+  const noOddsFromProvider = !hasLiveOdds && !hasPrematchOdds;
 
   // 选择使用的赔率数据源 (优先级: Live > Prematch > TheOddsAPI)
   let oddsSource = 'N/A';
@@ -649,6 +681,7 @@ export function convertApiMatchToAdvanced(
     totalGoals: homeScore + awayScore,
     _unscoreable: unscoreable,
     _noStatsReason: unscoreable ? 'MISSING_STATISTICS_DATA' : undefined,
+    noOddsFromProvider,
     _validation: {
       fixture_id: fixtureId,
       fixtures_real: fixtureValidation.is_real,

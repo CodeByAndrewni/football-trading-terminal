@@ -232,6 +232,9 @@ export function HomePage() {
 
     let filtered = liveWithScores;
 
+    // ⚠️ Guard：供应商无赔率的比赛只作为 stats 参考场，不进入首页机会表 / 信号筛选
+    filtered = filtered.filter(m => !m.noOddsFromProvider);
+
     // 联赛筛选
     if (filters.league !== 'ALL') {
       filtered = filtered.filter(m =>
