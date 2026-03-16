@@ -207,22 +207,23 @@ describe('calculateDynamicScore', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null for matches without stats', () => {
+    it('should still return result for matches without stats (with lower data health)', () => {
       const match = createMockAdvancedMatch({ stats: null as any });
 
       const result = calculateDynamicScore(match);
 
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
+      expect(result?.dataHealthScore).toBeLessThanOrEqual(50);
     });
 
-    it('should return null for matches without real data available', () => {
+    it('should still return result for matches without real data available flag', () => {
       const match = createMockAdvancedMatch({
         stats: { ...createMockAdvancedMatch().stats, _realDataAvailable: false } as any,
       });
 
       const result = calculateDynamicScore(match);
 
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
     });
 
     it('should return result for valid match with real data', () => {
@@ -237,7 +238,7 @@ describe('calculateDynamicScore', () => {
   });
 
   describe('score factor calculation', () => {
-    it('should give +18 for draw matches', () => {
+    it('should give ~+12 for draw matches', () => {
       const match = createMockAdvancedMatch({
         home: { score: 1 } as any,
         away: { score: 1 } as any,
@@ -246,10 +247,10 @@ describe('calculateDynamicScore', () => {
       const result = calculateDynamicScore(match);
 
       expect(result?.factors.scoreFactor.details.isDraw).toBe(true);
-      expect(result?.factors.scoreFactor.score).toBeGreaterThanOrEqual(18);
+      expect(result?.factors.scoreFactor.score).toBeGreaterThanOrEqual(12);
     });
 
-    it('should give +12 for one goal difference', () => {
+    it('should give ~+10 for one goal difference', () => {
       const match = createMockAdvancedMatch({
         home: { score: 2 } as any,
         away: { score: 1 } as any,
@@ -258,10 +259,10 @@ describe('calculateDynamicScore', () => {
       const result = calculateDynamicScore(match);
 
       expect(result?.factors.scoreFactor.details.oneGoalDiff).toBe(true);
-      expect(result?.factors.scoreFactor.score).toBeGreaterThanOrEqual(12);
+      expect(result?.factors.scoreFactor.score).toBeGreaterThanOrEqual(10);
     });
 
-    it('should give +5 for two goal difference', () => {
+    it('should give ~+6 for two goal difference', () => {
       const match = createMockAdvancedMatch({
         home: { score: 3 } as any,
         away: { score: 1 } as any,
@@ -270,10 +271,10 @@ describe('calculateDynamicScore', () => {
       const result = calculateDynamicScore(match);
 
       expect(result?.factors.scoreFactor.details.twoGoalDiff).toBe(true);
-      expect(result?.factors.scoreFactor.score).toBe(5);
+      expect(result?.factors.scoreFactor.score).toBeGreaterThanOrEqual(6);
     });
 
-    it('should give -10 for large goal gap (3+)', () => {
+    it('should give small positive score for large goal gap (3+)', () => {
       const match = createMockAdvancedMatch({
         home: { score: 4, handicap: 0 } as any,
         away: { score: 0 } as any,
@@ -282,7 +283,7 @@ describe('calculateDynamicScore', () => {
       const result = calculateDynamicScore(match);
 
       expect(result?.factors.scoreFactor.details.largeGap).toBe(true);
-      expect(result?.factors.scoreFactor.score).toBe(-10);
+      expect(result?.factors.scoreFactor.score).toBeGreaterThanOrEqual(2);
     });
 
     it('should give +15 for strong team behind (home strong, losing)', () => {

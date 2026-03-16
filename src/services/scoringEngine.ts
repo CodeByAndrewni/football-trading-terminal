@@ -191,20 +191,8 @@ function checkScoreability(match: AdvancedMatch): string | null {
   if (match._unscoreable) {
     return match._noStatsReason || 'MISSING_STATISTICS_DATA';
   }
-
-  // 检查统计数据是否可用
-  if (!match.stats) {
-    return 'NO_STATS_OBJECT';
-  }
-
-  // 检查关键统计字段
-  const stats = match.stats;
-  if (stats.shots.home === 0 && stats.shots.away === 0 && match.minute > 10) {
-    // 10分钟后还没有射门数据，可能是数据缺失
-    return 'SUSPICIOUS_ZERO_SHOTS';
-  }
-
-  return null; // 可以评分
+  // 其余情况一律允许评分，具体数据完整度由 dataHealthScore 反映
+  return null;
 }
 
 // ============================================
@@ -253,14 +241,14 @@ function calculateScoreFactor(match: AdvancedMatch): ScoreFactorResult {
 
   let score = 0;
 
-  // 平局 +18
-  if (details.isDraw) score += 18;
-  // 1球差距 +12
-  else if (details.oneGoalDiff) score += 12;
-  // 2球差距 +5
-  else if (details.twoGoalDiff) score += 5;
-  // 3球及以上差距 -10
-  else if (details.largeGap) score -= 10;
+  // 平局 +12
+  if (details.isDraw) score += 12;
+  // 1球差距 +10
+  else if (details.oneGoalDiff) score += 10;
+  // 2球差距 +6
+  else if (details.twoGoalDiff) score += 6;
+  // 3球及以上差距 +2（仅视为相对不理想，不再负向惩罚）
+  else if (details.largeGap) score += 2;
 
   // 强队落后 +15
   if (details.strongBehind) score += 15;
@@ -268,7 +256,8 @@ function calculateScoreFactor(match: AdvancedMatch): ScoreFactorResult {
   // 强队领先1球 +5
   if (details.strongLeadByOne) score += 5;
 
-  return { score: Math.max(-10, Math.min(25, score)), details };
+  // 比分因子只做正向激励，最低不低于0
+  return { score: Math.max(0, Math.min(25, score)), details };
 }
 
 // ============================================
@@ -684,7 +673,8 @@ function calculateHistoryFactor(
     score += 8;
   }
 
-  return { score: Math.min(25, score), details, dataAvailable };
+  // 历史因子整体权重降低，最高不超过 10 分
+  return { score: Math.min(10, score), details, dataAvailable };
 }
 
 // ============================================
@@ -1182,16 +1172,7 @@ export function calculateDynamicScore(
 
   // 数据健康评分：< 50 视为统计不足，直接标记为不可评分
   const dataHealth = calculateDataHealth(match);
-  if (dataHealth.score < 50) {
-    match._unscoreable = true;
-    if (!match._noStatsReason) {
-      match._noStatsReason = 'DATA_HEALTH_LOW';
-    }
-    console.warn(
-      `[STRICT MODE] Match ${match.id} 数据健康不足 (dataHealthScore=${dataHealth.score}), skip scoring.`
-    );
-    return null;
-  }
+  // 数据健康分现在仅作为置信度和展示依据，不再直接阻止评分
 
   // 计算各因子
   const scoreFactor = calculateScoreFactor(match);
@@ -1292,16 +1273,7 @@ export function calculateDynamicScoreWithOdds(
 
   // 数据健康评分：< 50 视为统计不足，直接标记为不可评分
   const dataHealth = calculateDataHealth(match);
-  if (dataHealth.score < 50) {
-    match._unscoreable = true;
-    if (!match._noStatsReason) {
-      match._noStatsReason = 'DATA_HEALTH_LOW';
-    }
-    console.warn(
-      `[STRICT MODE] Match ${match.id} 数据健康不足 (dataHealthScore=${dataHealth.score}), skip scoring with odds.`
-    );
-    return null;
-  }
+  // 数据健康分现在仅作为置信度和展示依据，不再直接阻止评分 with odds
 
   // 计算各因子
   const scoreFactor = calculateScoreFactor(match);
