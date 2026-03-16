@@ -606,7 +606,7 @@ function MatchRow({
   showImbalanceColumns?: boolean;
 }) {
   const liveClockTick = useLiveClock(5000);
-  const deltaMinutes = Math.floor((liveClockTick * 5) / 60);
+  const deltaMinutes = 0; // 比赛时间完全以 API 的 elapsed 为准，不再做本地分钟推算
   const [showDebug, setShowDebug] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
 
@@ -960,7 +960,7 @@ function MatchRow({
   const oddsMovement = useMemo((): OddsMovementSummary | null => {
     return getOddsMovementSummary(match.id);
   }, [match.id, match.odds]); // 依赖 odds 变化时重新计算
-  const minuteDisplay = formatMatchMinute(match, deltaMinutes);
+  const minuteDisplay = formatMatchMinute(match);
 
   return (
     <>

@@ -39,7 +39,7 @@ export function MobileMatchCard({ match, onToggleWatch }: MobileMatchCardProps) 
   const isUnscoreable = !scoreResult || match._unscoreable === true;
 
   const liveClockTick = useLiveClock(5000);
-  const deltaMinutes = Math.floor((liveClockTick * 5) / 60);
+  const deltaMinutes = 0; // 比赛时间完全以 API 的 elapsed 为准，不再做本地分钟推算
 
   // 评分样式
   const getScoreStyle = () => {
@@ -82,7 +82,7 @@ export function MobileMatchCard({ match, onToggleWatch }: MobileMatchCardProps) 
           </span>
           <div className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-accent-success animate-pulse" />
-            <span className={`font-mono text-xs ${getMinuteStyle()}`}>{formatMatchMinute(match, deltaMinutes)}</span>
+            <span className={`font-mono text-xs ${getMinuteStyle()}`}>{formatMatchMinute(match)}</span>
           </div>
         </div>
 

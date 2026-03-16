@@ -106,7 +106,7 @@ function MatchCard({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <span className="text-sm text-[#666] font-medium">{match.leagueShort || match.league}</span>
-          <span className={`text-lg ${getMinuteStyle()}`}>{formatMatchMinute(match, deltaMinutes)}</span>
+          <span className={`text-lg ${getMinuteStyle()}`}>{formatMatchMinute(match)}</span>
         </div>
         <div className="flex items-center gap-2">
           {/* 评分徽章 */}

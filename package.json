@@ -20,7 +20,8 @@
     "ingest:daily": "bun run scripts/ingest/daily-incremental.ts",
     "ingest:live": "bun run scripts/ingest/live-update.ts",
     "ingest:live:once": "bun run scripts/ingest/live-update.ts --once",
-    "sync:teams": "bun run scripts/sync_teams.ts"
+    "sync:teams": "bun run scripts/sync_teams.ts",
+    "corner-stats-today": "bun run scripts/corner-stats-today.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",

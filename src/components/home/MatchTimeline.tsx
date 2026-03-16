@@ -163,6 +163,8 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
   const awayScore = match.away?.score ?? 0;
   const hasEvents = events.length > 0;
   const hasGoals = homeScore > 0 || awayScore > 0;
+  const totalCorners =
+    (match.corners?.home ?? 0) + (match.corners?.away ?? 0);
 
    // 如果从未有过事件且比赛尚未开始，则可以完全隐藏时间轴
    if (!hasEvents && isNotStarted) {
@@ -170,8 +172,19 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
    }
 
   return (
+    <div className={`relative bg-[#111] rounded overflow-hidden ${className}`}>
+      {/* 顶部：角球总览（不展示具体时间点，避免伪造角球时间） */}
+      {totalCorners > 0 && (
+        <div className="flex items-center justify-end px-2 py-1 text-[10px] text-[#999] gap-1 border-b border-[#222]">
+          <span>🚩 角球</span>
+          <span>
+            主 {match.corners?.home ?? 0} - 客 {match.corners?.away ?? 0}
+          </span>
+        </div>
+      )}
+
     <div
-      className={`relative h-8 bg-[#1a1a1a] rounded overflow-hidden ${className}`}
+      className="relative h-8 bg-[#1a1a1a] overflow-hidden"
     >
       {/* 进度条 */}
       <div
