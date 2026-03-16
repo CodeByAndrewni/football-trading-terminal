@@ -199,13 +199,6 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
       {/* 中场线 */}
       <div className="absolute left-1/2 top-0 h-full w-px bg-[#444]" />
 
-      {/* 中场休息标签 */}
-      {isHalfTime && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#333] text-[#888] px-1 py-0.5 rounded text-[9px] z-10">
-          HT
-        </div>
-      )}
-
       {/* 未开始显示开赛时间 */}
       {isNotStarted && (
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[#666] text-[11px] whitespace-nowrap">
@@ -213,9 +206,16 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
         </div>
       )}
 
-      {/* 进行中：显示事件或比分 */}
-      {!isNotStarted && !isHalfTime && !isFinished && (
+      {/* 进行中 & 半场：显示事件或比分 */}
+      {!isNotStarted && !isFinished && (
         <>
+          {/* 中场休息标签覆盖在中间 */}
+          {isHalfTime && (
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#333] text-[#888] px-1 py-0.5 rounded text-[9px] z-10">
+              HT
+            </div>
+          )}
+
           {/* 主队事件（上方） */}
           <div className="absolute left-0 top-0.5 w-full h-3.5 flex items-center">
             {homeEvents.map(renderEventIcon)}
