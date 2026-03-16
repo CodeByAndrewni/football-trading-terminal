@@ -183,9 +183,7 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
         </div>
       )}
 
-    <div
-      className="relative h-8 bg-[#1a1a1a] overflow-hidden"
-    >
+      <div className="relative h-8 bg-[#1a1a1a] overflow-hidden">
       {/* 进度条 */}
       <div
         className={`absolute left-0 top-0 h-full transition-all duration-300 ${
@@ -251,6 +249,7 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
           </span>
         </div>
       )}
+      </div>
     </div>
   );
 }
