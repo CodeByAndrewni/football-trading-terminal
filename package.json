@@ -21,7 +21,8 @@
     "ingest:live": "bun run scripts/ingest/live-update.ts",
     "ingest:live:once": "bun run scripts/ingest/live-update.ts --once",
     "sync:teams": "bun run scripts/sync_teams.ts",
-    "corner-stats-today": "bun run scripts/corner-stats-today.ts"
+    "corner-stats-today": "bun run scripts/corner-stats-today.ts",
+    "backtest:goal-next15": "bun run scripts/backtest_goal_next15.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",

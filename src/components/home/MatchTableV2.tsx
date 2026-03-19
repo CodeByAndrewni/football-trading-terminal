@@ -43,6 +43,8 @@ import {
 import { OddsMovementBadge, type OddsMovement } from "../ui/OddsMovementBadge";
 import { useLiveClock } from "../../hooks/useLiveClock";
 import { formatMatchMinute } from "../../utils/matchTime";
+import { CompactRating } from "./DynamicRating";
+import { getDataHealthIcon, getOddsHealthIcon } from "../../utils/scoreVisuals";
 
 // ============================================
 // 筛选配置接口
@@ -492,18 +494,15 @@ return (
       </div>
     )}
 
-    <table className="w-full min-w-[1000px] border-collapse">
+    <table className="w-full min-w-[780px] border-collapse">
       <thead>
         <tr className="bg-[#1a1a1a] border-b border-[#333]">
-          <th className="w-[70px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888]">
-            赛事
-          </th>
           <th
-            className="w-[45px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888] cursor-pointer hover:text-[#00d4ff]"
+            className="w-[70px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888] cursor-pointer hover:text-[#00d4ff]"
             onClick={() => handleSort("minute")}
           >
             <div className="flex items-center justify-center gap-1">
-              &#9201;
+              时间
               {sortField === "minute" &&
                 (sortAsc ? (
                   <ChevronUp className="w-3 h-3" />
@@ -512,47 +511,15 @@ return (
                 ))}
             </div>
           </th>
-          <th className="w-[160px] px-2 py-2.5 text-right text-[11px] font-medium text-[#888]">
-            主队（初：让球）
-          </th>
-          <th className="w-[55px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888]">
-            比分
-          </th>
-          <th className="w-[160px] px-2 py-2.5 text-left text-[11px] font-medium text-[#888]">
-            （初：进球数）客队
-          </th>
-          <th className="w-[220px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888]">
-            比赛动态
-          </th>
-          {/* Phase 2: 失衡指标列 */}
-          {showImbalanceColumns && (
-            <>
-              <th className="w-[55px] px-1 py-2.5 text-center text-[10px] font-medium text-[#22c55e]" title="主队射门 - 客队射门">
-                射门差
-              </th>
-              <th className="w-[55px] px-1 py-2.5 text-center text-[10px] font-medium text-[#22c55e]" title="射正差">
-                射正差
-              </th>
-              <th className="w-[50px] px-1 py-2.5 text-center text-[10px] font-medium text-[#22c55e]" title="角球差">
-                角球差
-              </th>
-              <th className="w-[55px] px-1 py-2.5 text-center text-[10px] font-medium text-[#22c55e]" title="综合失衡评分 0-100">
-                失衡分
-              </th>
-            </>
-          )}
-          <th className="w-[100px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888]">
-            让球盘
-          </th>
-          <th className="w-[100px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888]">
-            大小球
+          <th className="w-[280px] px-2 py-2.5 text-left text-[11px] font-medium text-[#888]">
+            对阵 / 比分
           </th>
           <th
-            className="w-[110px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888] cursor-pointer hover:text-[#00d4ff]"
+            className="w-[120px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888] cursor-pointer hover:text-[#00d4ff]"
             onClick={() => handleSort("score")}
           >
             <div className="flex items-center justify-center gap-1">
-              评分/置信
+              评分
               {sortField === "score" &&
                 (sortAsc ? (
                   <ChevronUp className="w-3 h-3" />
@@ -561,6 +528,10 @@ return (
                 ))}
             </div>
           </th>
+          <th className="w-[220px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888]">
+            场面概览
+          </th>
+          <th className="w-[100px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888]">状态</th>
         </tr>
       </thead>
       <tbody>
@@ -961,6 +932,13 @@ function MatchRow({
     return getOddsMovementSummary(match.id);
   }, [match.id, match.odds]); // 依赖 odds 变化时重新计算
   const minuteDisplay = formatMatchMinute(match);
+  const shotsHome = match.stats?.shots?.home ?? 0;
+  const shotsAway = match.stats?.shots?.away ?? 0;
+  const cornersHome = match.corners?.home ?? 0;
+  const cornersAway = match.corners?.away ?? 0;
+  const healthScore = match.scoreResult?.dataHealthScore ?? 0;
+  const dataHealthIcon = getDataHealthIcon(healthScore);
+  const oddsIcon = getOddsHealthIcon(match.scoreResult?.oddsHealthLevel);
 
   return (
     <>
@@ -968,11 +946,6 @@ function MatchRow({
         className={`${getRowStyle()} border-b border-[#222] cursor-pointer transition-colors`}
         onClick={onViewDetail}
       >
-        {/* 赛事 */}
-        <td className="px-2 py-2 text-center text-[12px] text-[#888]">
-          {match.leagueShort || match.league?.slice(0, 4) || "-"}
-        </td>
-
         {/* 时间 */}
         <td
           className={`px-2 py-2 text-center text-[13px] font-bold ${getMinuteStyle()}`}
@@ -980,295 +953,71 @@ function MatchRow({
           {minuteDisplay}
         </td>
 
-        {/* 主队（初：让球） */}
-        <td className="px-2 py-2 text-right">
-          <div className="flex items-center justify-end gap-1">
-            {match.home?.rank && (
-              <span className="text-[10px] text-[#666]">[{match.home.rank}]</span>
-            )}
-            <span className="text-[12px] font-medium text-[#e0e0e0] truncate max-w-[100px]">
-              {match.home?.name || "-"}
-            </span>
-            {prematchHandicapDisplay !== null ? (
-              <span className="text-[10px] text-[#ffaa00]">
-                （初：{prematchHandicapDisplay}）
-              </span>
-            ) : null}
-          </div>
-        </td>
-
-        {/* 比分 */}
-        <td className="px-2 py-2 text-center">
-          <span className="text-[16px] font-bold font-mono">
-            <span
-              className={
-                match.home?.score > match.away?.score
-                  ? "text-[#00d4ff]"
-                  : "text-white"
-              }
-            >
-              {match.home?.score ?? "-"}
-            </span>
-            <span className="text-[#444] mx-1">-</span>
-            <span
-              className={
-                match.away?.score > match.home?.score
-                  ? "text-[#ff6b6b]"
-                  : "text-white"
-              }
-            >
-              {match.away?.score ?? "-"}
-            </span>
-          </span>
-        </td>
-
-        {/* （初：进球数）客队 */}
-        <td className="px-2 py-2 text-left">
-          <div className="flex items-center gap-1">
-            {prematchOUDisplay !== null ? (
-              <span className="text-[10px] text-[#ffaa00]">
-                （初：{prematchOUDisplay}）
-              </span>
-            ) : null}
-            <span className="text-[12px] font-medium text-[#e0e0e0] truncate max-w-[100px]">
-              {match.away?.name || "-"}
-            </span>
-            {match.away?.rank && (
-              <span className="text-[10px] text-[#666]">[{match.away.rank}]</span>
-            )}
-          </div>
-        </td>
-
-        {/* 比赛动态（时间轴） */}
+        {/* 对阵 / 比分 */}
         <td className="px-2 py-2">
-          <MatchTimeline match={match} />
-        </td>
-
-        {/* Phase 2: 失衡指标列 */}
-        {showImbalanceColumns && (
-          <>
-            {/* 射门差 */}
-            <td className="px-1 py-2 text-center">
-              <ImbalanceCell
-                value={imbalanceMetrics.shotsDiff}
-                hasData={hasStats}
-                colorThreshold={5}
-              />
-            </td>
-            {/* 射正差 */}
-            <td className="px-1 py-2 text-center">
-              <ImbalanceCell
-                value={imbalanceMetrics.shotsOnTargetDiff}
-                hasData={hasStats}
-                colorThreshold={3}
-              />
-            </td>
-            {/* 角球差 */}
-            <td className="px-1 py-2 text-center">
-              <ImbalanceCell
-                value={imbalanceMetrics.cornersDiff}
-                hasData={hasStats}
-                colorThreshold={3}
-              />
-            </td>
-            {/* 失衡分 */}
-            <td className="px-1 py-2 text-center">
-              <span
-                className={`text-[11px] font-bold ${
-                  !hasStats ? 'text-[#555]' :
-                  imbalanceMetrics.imbalanceScore >= 50 ? 'text-[#22c55e]' :
-                  imbalanceMetrics.imbalanceScore >= 30 ? 'text-[#eab308]' :
-                  'text-[#888]'
-                }`}
-              >
-                {hasStats ? imbalanceMetrics.imbalanceScore : '-'}
-              </span>
-            </td>
-          </>
-        )}
-
-        {/* 让球盘 + 赔率状态 */}
-        <td className="px-2 py-2 text-center">
-          <div className="flex flex-col items-center gap-0.5">
-            <div
-              className={`flex items-center justify-center gap-0.5 text-[11px] font-mono ${!handicapOdds.isReal ? "text-[#666]" : ""}`}
-            >
-              <span
-                className={handicapOdds.isReal ? "text-[#e0e0e0]" : "text-[#555]"}
-              >
-                {handicapOdds.home}
-              </span>
-              <span className="text-[#333]">/</span>
-              <span
-                className={`font-medium px-0.5 ${handicapOdds.isReal ? "text-[#ffaa00]" : "text-[#555]"}`}
-              >
-                {handicapOdds.line}
-              </span>
-              <span className="text-[#333]">/</span>
-              <span
-                className={handicapOdds.isReal ? "text-[#e0e0e0]" : "text-[#555]"}
-              >
-                {handicapOdds.away}
-              </span>
-            </div>
-            {/* 赔率状态指示 - 带悬停提示 */}
-            <div className="relative group/odds">
-              <div className={`text-[9px] ${oddsStatus.color} cursor-help`}>
-                {oddsStatus.icon && (
-                  <span className="mr-0.5">{oddsStatus.icon}</span>
-                )}
-                {oddsStatus.timeAgo ? `${oddsStatus.timeAgo}` : oddsStatus.status}
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[11px] text-[#666] truncate">
+                {match.leagueShort || match.league?.slice(0, 24) || "-"}
               </div>
-              {/* 悬停提示 */}
-              <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/odds:block">
-                <div className="bg-[#1a1a1a] border border-[#333] rounded px-2 py-1 text-[10px] text-[#aaa] whitespace-nowrap shadow-lg">
-                  {oddsStatus.tooltip}
-                  <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-0 h-0 border-l-[4px] border-r-[4px] border-t-[4px] border-l-transparent border-r-transparent border-t-[#333]" />
-                </div>
+              <div className="text-[12px] text-[#e0e0e0] truncate">
+                {match.home?.name || "-"} vs {match.away?.name || "-"}
               </div>
             </div>
+            <span className="text-[16px] font-bold font-mono whitespace-nowrap">
+              <span className={match.home?.score > match.away?.score ? "text-[#00d4ff]" : "text-white"}>
+                {match.home?.score ?? "-"}
+              </span>
+              <span className="text-[#444] mx-1">-</span>
+              <span className={match.away?.score > match.home?.score ? "text-[#ff6b6b]" : "text-white"}>
+                {match.away?.score ?? "-"}
+              </span>
+            </span>
           </div>
         </td>
 
-        {/* 大小球 - 主盘显示 "大 X.X" + 趋势 + 悬停提示 */}
+        {/* 评分 */}
         <td className="px-2 py-2 text-center">
-          <div className="relative group flex flex-col items-center gap-0.5">
-            <div
-              className={`flex items-center justify-center gap-1 text-[11px] font-mono ${!overUnderOdds.isReal ? "text-[#666]" : ""}`}
-            >
-              <span
-                className={overUnderOdds.isReal ? "text-[#e0e0e0]" : "text-[#555]"}
-              >
-                {overUnderOdds.over}
-              </span>
-              <span className="text-[#333]">/</span>
-              <span
-                className={`font-medium px-1 rounded cursor-help ${overUnderOdds.isReal ? "text-[#ffaa00] bg-[#ffaa00]/10" : "text-[#555]"} ${overUnderOdds.hasMultipleLines ? "underline decoration-dotted decoration-[#666]" : ""}`}
-              >
-                {overUnderOdds.lineDisplay}
-              </span>
-              <span className="text-[#333]">/</span>
-              <span
-                className={overUnderOdds.isReal ? "text-[#e0e0e0]" : "text-[#555]"}
-              >
-                {overUnderOdds.under}
-              </span>
+          {match.scoreResult ? (
+            <div className="flex flex-col items-center gap-0.5">
+              <CompactRating scoreResult={match.scoreResult} />
+              {(lateSignal || moduleASignal) && (
+                <span className={`text-[10px] ${getConfidenceStyle()}`}>置信 {confidence}</span>
+              )}
             </div>
+          ) : (
+            <div className="text-[12px] text-[#666]">--</div>
+          )}
+        </td>
 
-            {/* v162: 赔率趋势指示器 */}
-            {oddsMovement && oddsMovement.snapshotCount >= 2 && (
-              <div
-                className={`flex items-center gap-0.5 text-[9px] font-mono ${
-                  oddsMovement.overOddsDirection === 'down'
-                    ? 'text-[#22c55e]'
-                    : oddsMovement.overOddsDirection === 'up'
-                      ? 'text-[#ef4444]'
-                      : 'text-[#666]'
-                }`}
-                title={`赔率变化: ${oddsMovement.overOddsChange > 0 ? '+' : ''}${oddsMovement.overOddsChange.toFixed(1)}% (${oddsMovement.snapshotCount}点/${oddsMovement.timeSpanMinutes}分钟)`}
-              >
-                {oddsMovement.overOddsDirection === 'down' && '↓'}
-                {oddsMovement.overOddsDirection === 'up' && '↑'}
-                {oddsMovement.overOddsDirection === 'stable' && '—'}
-                {Math.abs(oddsMovement.overOddsChange) >= 0.5 && (
-                  <span>{Math.abs(oddsMovement.overOddsChange).toFixed(1)}%</span>
-                )}
-                {oddsMovement.overOddsSignificant && (
-                  <span className="text-[#eab308] animate-pulse">!</span>
-                )}
-              </div>
-            )}
-
-            {/* 悬停提示：显示所有可用的 O/U 线 */}
-            {overUnderOdds.hasMultipleLines && (
-              <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 px-0 py-0 hidden group-hover:block">
-                <div className="bg-[#1a1a1a] border border-[#333] rounded-md shadow-lg p-2 min-w-[140px]">
-                  <div className="text-[10px] text-[#888] mb-1.5 border-b border-[#333] pb-1">
-                    所有 O/U 盘口
-                  </div>
-                  <div className="space-y-1">
-                    {overUnderOdds.allLines.map((line) => (
-                      <div
-                        key={line.line}
-                        className={`flex items-center justify-between text-[10px] font-mono px-1 py-0.5 rounded ${
-                          line.isMain
-                            ? "bg-[#ffaa00]/15 text-[#ffaa00]"
-                            : "text-[#aaa]"
-                        }`}
-                      >
-                        <span className="w-[35px]">{line.line.toFixed(1)}</span>
-                        <span className="text-[#4ade80]">
-                          {line.over !== null ? line.over.toFixed(2) : "-"}
-                        </span>
-                        <span className="text-[#444]">/</span>
-                        <span className="text-[#f87171]">
-                          {line.under !== null ? line.under.toFixed(2) : "-"}
-                        </span>
-                        {line.isMain && (
-                          <span className="text-[8px] ml-1">主</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {/* 小三角指示器 */}
-                  <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-[#333]" />
-                </div>
-              </div>
-            )}
+        {/* 场面概览 */}
+        <td className="px-2 py-2">
+          <div className="space-y-1">
+            <div className="text-[11px] text-[#aaa] text-center">
+              射门 {shotsHome}-{shotsAway} · 角球 {cornersHome}-{cornersAway}
+            </div>
+            <MatchTimeline match={match} />
           </div>
         </td>
 
-        {/* 评分 + 置信度 + Action + 场景标签 + Debug */}
+        {/* 状态 */}
         <td className="px-2 py-2 text-center">
           <div className="flex items-center justify-center gap-2">
-            {/* 评分/置信度（可点击） */}
-            <div
-              className="flex flex-col items-center cursor-pointer hover:opacity-80"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (lateSignal || moduleASignal) setShowReasons(true);
-              }}
-            >
-              <div className="flex items-center gap-1">
-                <span className={`text-[15px] font-bold ${getRatingStyle()}`}>
-                  {isUnscoreable || rating === 0 ? "--" : rating}
-                </span>
-                {(lateSignal || moduleASignal) && (
-                  <span className={`text-[11px] ${getConfidenceStyle()}`}>
-                    /{confidence}
-                  </span>
-                )}
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[11px] text-[#bbb]">
+                <span title="数据健康">{dataHealthIcon}</span>
+                <span className="ml-1" title={oddsStatus.tooltip}> {oddsIcon}</span>
               </div>
 
-              {/* v159: 场景标签 - 在行动标签上方 */}
               {scenarioTag && scenarioTag !== 'BLOWOUT' && (
                 <CompactScenarioTag
                   scenario={scenarioTag as ScenarioTagType}
                   isWarmup={isWarmup}
-                  className="mb-0.5"
                 />
               )}
-
               {getActionBadge()}
-
-              {/* 泊松概率显示 (仅激活模式且有信号时) */}
-              {lateSignal && !isWarmup && lateSignal.poisson_goal_prob > 30 && (
-                <span className="text-[8px] text-[#22c55e]">
-                  P({Math.round(lateSignal.poisson_goal_prob)}%)
-                </span>
-              )}
-
-              {!lateSignal && !moduleASignal && !isUnscoreable && match.minute >= 65 && (
-                <span className="text-[9px] text-[#666]">旧评分</span>
-              )}
-              {isUnscoreable && (
-                <span className="text-[9px] text-[#888]" title="统计数据不足，无法计算评分">
-                  统计不足
-                </span>
-              )}
             </div>
 
-            {/* Debug 按钮 */}
             <button
               onClick={(e) => {
                 e.stopPropagation();

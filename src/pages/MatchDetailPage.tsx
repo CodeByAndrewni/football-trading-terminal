@@ -22,6 +22,12 @@ import { HistoryValidation } from '../components/home/HistoryValidation';
 import { SimulatedOrderPanel } from '../components/home/SimulatedOrderPanel';
 import { recordScoreSnapshot } from '../services/scoreHistory';
 import { useMatchAdvanced } from '../hooks/useMatches';
+import {
+  getScoreTextClass,
+  getScoreBgGradient,
+  getDataHealthIcon,
+  getOddsHealthIcon,
+} from '../utils/scoreVisuals';
 
 // xG历史数据类型
 interface XgHistoryPoint {
@@ -323,106 +329,15 @@ export function MatchDetailPage() {
             <StatisticsSection stats={matchData.statsList} home={matchData.home} away={matchData.away} />
           </div>
 
-          {/* 右侧：因子分析和预警 */}
+          {/* 右侧：三卡片结构（决策概要 / 数据拆解 / 盘口&历史） */}
           <div className="xl:col-span-4 space-y-6">
-            {/* 模拟下单面板 */}
-            <SimulatedOrderPanel match={matchData} />
-
-            {/* ScoreResult 概览：数据 / 盘口健康度 */}
-            <div className="card text-xs text-text-secondary space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-accent-primary" />
-                  <span className="font-medium text-text-primary">数据 / 盘口健康度</span>
-                </div>
-              </div>
-              {scoreResult ? (
-                <div className="space-y-1">
-                  <div>
-                    <span className="text-text-muted mr-1">数据健康:</span>
-                    <span className="font-mono text-sm text-text-primary">
-                      {scoreResult.dataHealthScore ?? '--'}/100
-                    </span>
-                    <span className="ml-2">
-                      {scoreResult.dataHealthLevel === 'LOW'
-                        ? '统计不足'
-                        : scoreResult.dataHealthLevel === 'MEDIUM'
-                        ? '统计一般'
-                        : scoreResult.dataHealthLevel === 'HIGH'
-                        ? '统计良好'
-                        : '—'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-text-muted mr-1">盘口健康:</span>
-                    {scoreResult.oddsHealthScore != null && scoreResult.oddsHealthLevel ? (
-                      <>
-                        <span className="font-mono text-sm text-text-primary">
-                          {scoreResult.oddsHealthScore}/100
-                        </span>
-                        <span className="ml-2">
-                          {scoreResult.oddsHealthLevel === 'LOW'
-                            ? '盘口不可用'
-                            : scoreResult.oddsHealthLevel === 'MEDIUM'
-                            ? '盘口参考'
-                            : scoreResult.oddsHealthLevel === 'HIGH'
-                            ? '盘口健康'
-                            : '—'}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-text-muted">未计算（当前评分未接入赔率因子）</span>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-accent-warning">
-                  统计不足，不评分（{unscoreableReason}）
-                </div>
-              )}
-            </div>
-
-            {/* 雷达图 - 仅在有评分时显示 */}
-            {scoreResult && <FactorRadarChart factors={scoreResult.factors} />}
-
-            {/* 因子详情 - 仅在有评分时显示 */}
-            {scoreResult && <FactorBreakdownPanel factors={scoreResult.factors} />}
-
-            {/* Stats 通道评分（仅展示，不参与排序/信号） */}
-            <StatsChannelPanel scoreResult={scoreResult} match={matchData} />
-
-            {/* 换人分析 */}
-            <SubstitutionAnalysis
-              substitutions={matchData.substitutions}
-              minute={matchData.minute}
-              signalScore={scoreResult?.factors.specialFactor.details.recentAttackSub ? 6 : 0}
+            <DecisionSummaryCard
+              match={matchData}
+              scoreResult={scoreResult}
+              unscoreableReason={unscoreableReason}
             />
-
-            {/* 盘口分析 */}
-            <OddsAnalysisPanel odds={matchData.odds} />
-
-            {/* 预警信号 - 仅在有评分时显示 */}
-            {scoreResult && (
-              <AlertSignalsPanel
-                alerts={scoreResult.alerts}
-                recommendation={scoreResult.recommendation}
-                isStrongTeamBehind={scoreResult.isStrongTeamBehind}
-              />
-            )}
-
-            {/* 历史验证模块 - 仅在有评分时显示 */}
-            {scoreResult && (
-              <HistoryValidation
-                teamName={matchData.home.name}
-                scenarioTags={matchData.scenarioTags || []}
-                pressure={matchData.pressure}
-                currentMinute={matchData.minute}
-                currentScore={scoreResult.totalScore}
-              />
-            )}
-
-            {/* 比赛事件 */}
-            <EventsTimeline events={matchData.events} />
+            <DataBreakdownCard match={matchData} scoreResult={scoreResult} />
+            <MarketHistoryCard match={matchData} scoreResult={scoreResult} />
           </div>
         </div>
       </div>
@@ -438,17 +353,12 @@ function MatchHeaderSection({ match, scoreResult, isUnscoreable }: { match: Adva
 
   const getScoreColor = () => {
     if (isUnscoreable) return 'text-text-muted';
-    if (totalScore >= 80) return 'text-accent-danger';
-    if (totalScore >= 60) return 'text-accent-warning';
-    if (totalScore >= 40) return 'text-accent-success';
-    return 'text-text-muted';
+    return getScoreTextClass(totalScore);
   };
 
   const getScoreBg = () => {
     if (isUnscoreable) return 'from-gray-500/10 to-transparent';
-    if (totalScore >= 80) return 'from-accent-danger/20 to-transparent';
-    if (totalScore >= 60) return 'from-accent-warning/20 to-transparent';
-    return 'from-accent-primary/10 to-transparent';
+    return getScoreBgGradient(totalScore);
   };
 
   return (
@@ -575,6 +485,139 @@ function MatchHeaderSection({ match, scoreResult, isUnscoreable }: { match: Adva
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DecisionSummaryCard({
+  match,
+  scoreResult,
+  unscoreableReason,
+}: {
+  match: AdvancedMatch;
+  scoreResult: ScoreResult | null;
+  unscoreableReason?: string | null;
+}) {
+  const score = scoreResult?.totalScore ?? 0;
+  const scoreClass = getScoreTextClass(score);
+  const keyReasons = scoreResult?.alerts?.slice(0, 3) ?? [];
+
+  return (
+    <div className="card space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-accent-primary" />
+          <span className="font-medium text-text-primary">决策概要</span>
+        </div>
+        <div className="text-xs text-text-muted">{match.minute}' · {match.home.score}-{match.away.score}</div>
+      </div>
+
+      {scoreResult ? (
+        <>
+          <div className="flex items-center justify-between">
+            <div className={`font-mono text-3xl font-black ${scoreClass}`}>{score}</div>
+            <RecommendationBadge recommendation={scoreResult.recommendation} />
+          </div>
+          <div className="flex items-center gap-2 text-xs text-text-secondary">
+            <span title="数据健康">{getDataHealthIcon(scoreResult.dataHealthScore)}</span>
+            <span>数据 {scoreResult.dataHealthScore ?? '--'}/100</span>
+            <span className="text-text-muted">·</span>
+            <span title="盘口健康">{getOddsHealthIcon(scoreResult.oddsHealthLevel)}</span>
+            <span>
+              {scoreResult.oddsHealthScore != null ? `盘口 ${scoreResult.oddsHealthScore}/100` : '盘口未计算'}
+            </span>
+          </div>
+          <div className="space-y-1">
+            {keyReasons.length > 0 ? (
+              keyReasons.map((reason, i) => (
+                <div key={`${reason}-${i}`} className="text-xs text-text-secondary">
+                  • {reason}
+                </div>
+              ))
+            ) : (
+              <div className="text-xs text-text-muted">暂无关键理由</div>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="text-sm text-accent-warning">
+          统计不足，当前仅展示基础信息（{unscoreableReason || 'NO_SCORE'}）
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DataBreakdownCard({
+  match,
+  scoreResult,
+}: {
+  match: AdvancedMatch;
+  scoreResult: ScoreResult | null;
+}) {
+  const shots = `${match.stats?.shots?.home ?? 0}-${match.stats?.shots?.away ?? 0}`;
+  const shotsOn = `${match.stats?.shotsOnTarget?.home ?? 0}-${match.stats?.shotsOnTarget?.away ?? 0}`;
+  const corners = `${match.corners?.home ?? 0}-${match.corners?.away ?? 0}`;
+  const xg = `${(match.stats?.xG?.home ?? 0).toFixed(2)}-${(match.stats?.xG?.away ?? 0).toFixed(2)}`;
+  const timelineEvents = (match.events ?? [])
+    .map((e) => ({
+      minute: e.minute ?? e.time?.elapsed ?? 0,
+      type: e.type ?? 'other',
+      team: (e.teamSide === 'away' ? 'away' : 'home') as 'home' | 'away',
+      player: e.player?.name ?? '',
+      detail: e.detail,
+    }))
+    .filter((e) => e.minute >= 0);
+
+  return (
+    <div className="card space-y-3">
+      <div className="flex items-center gap-2">
+        <BarChart3 className="w-4 h-4 text-accent-primary" />
+        <span className="font-medium text-text-primary">数据拆解</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded bg-bg-component px-2 py-1.5 text-text-secondary">射门 <span className="font-mono text-text-primary">{shots}</span></div>
+        <div className="rounded bg-bg-component px-2 py-1.5 text-text-secondary">射正 <span className="font-mono text-text-primary">{shotsOn}</span></div>
+        <div className="rounded bg-bg-component px-2 py-1.5 text-text-secondary">角球 <span className="font-mono text-text-primary">{corners}</span></div>
+        <div className="rounded bg-bg-component px-2 py-1.5 text-text-secondary">xG <span className="font-mono text-text-primary">{xg}</span></div>
+      </div>
+      <StatsChannelPanel scoreResult={scoreResult} match={match} />
+      <EventsTimeline events={timelineEvents} />
+    </div>
+  );
+}
+
+function MarketHistoryCard({
+  match,
+  scoreResult,
+}: {
+  match: AdvancedMatch;
+  scoreResult: ScoreResult | null;
+}) {
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center gap-2">
+        <TrendingUp className="w-4 h-4 text-accent-primary" />
+        <span className="font-medium text-text-primary">盘口 & 历史（低权重参考）</span>
+      </div>
+      <OddsAnalysisPanel odds={match.odds} />
+      {scoreResult && (
+        <>
+          <HistoryValidation
+            teamName={match.home.name}
+            scenarioTags={match.scenarioTags || []}
+            pressure={match.pressure}
+            currentMinute={match.minute}
+            currentScore={scoreResult.totalScore}
+          />
+          <AlertSignalsPanel
+            alerts={scoreResult.alerts}
+            recommendation={scoreResult.recommendation}
+            isStrongTeamBehind={scoreResult.isStrongTeamBehind}
+          />
+        </>
+      )}
+      <SimulatedOrderPanel match={match} />
     </div>
   );
 }

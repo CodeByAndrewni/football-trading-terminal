@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react';
 import type { ScoreResult, ScoringFactors } from '../../services/scoringEngine';
+import { getScoreTextClass } from '../../utils/scoreVisuals';
 
 interface DynamicRatingProps {
   scoreResult: ScoreResult;
@@ -16,10 +17,7 @@ export function DynamicRating({ scoreResult, showDetails = false }: DynamicRatin
 
   // 评分颜色
   const getScoreColor = () => {
-    if (totalScore >= 80) return 'text-accent-danger';
-    if (totalScore >= 60) return 'text-accent-warning';
-    if (totalScore >= 40) return 'text-accent-success';
-    return 'text-text-muted';
+    return getScoreTextClass(totalScore);
   };
 
   // 星级渲染
