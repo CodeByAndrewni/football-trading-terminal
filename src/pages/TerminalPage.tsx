@@ -10,7 +10,6 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { Volume2, VolumeX, RefreshCw, ChevronDown, ChevronRight, HelpCircle, X } from 'lucide-react';
 import { useLiveMatchesAdvanced } from '../hooks/useMatches';
 import { calculateDynamicScore, type ScoreResult } from '../services/scoringEngine';
-import { hasLiveOddsCoverage } from '../config/constants';
 import type { AdvancedMatch } from '../data/advancedMockData';
 import { soundService } from '../services/soundService';
 
@@ -78,38 +77,51 @@ interface MatchWithScore extends AdvancedMatch {
   scoreResult: ScoreResult | null;
 }
 
-interface TerminalFilters {
-  league: string;
-  minMinute: number;
-  minRating: number;
-  oddsConfirmed: boolean;
-  hideNoOddsCoverage: boolean; // 隐藏无赔率覆盖的联赛
+type FilterModelType =
+  | 'GOAL_INDEX'
+  | 'POSSESSION_RATE'
+  | 'HANDICAP_INDEX'
+  | 'GOAL_COUNT'
+  | 'CORNER_COUNT'
+  | 'SHOTS_SINGLE'
+  | 'SHOTS_ON_TARGET_SINGLE'
+  | 'RED_CARDS_SINGLE';
+
+interface FilterModelState {
+  startMinute: number; // 0-90
+  endMinute: number; // 0-90
+  type: FilterModelType;
+  value: number;
 }
 
-// 联赛缩写映射
-const LEAGUE_SHORT: Record<string, string> = {
-  '英超': '英超',
-  '西甲': '西甲',
-  '德甲': '德甲',
-  '意甲': '意甲',
-  '法甲': '法甲',
-  '欧冠': '欧冠',
-  '欧联': '欧联',
-  '中超': '中超',
-  '日职': '日职',
-  '葡超': '葡超',
-  '荷甲': '荷甲',
+const FILTER_MODEL_TYPES: Array<{ key: FilterModelType; label: string }> = [
+  { key: 'GOAL_INDEX', label: '进球指数' },
+  { key: 'POSSESSION_RATE', label: '控球率' },
+  { key: 'HANDICAP_INDEX', label: '让球指数' },
+  { key: 'GOAL_COUNT', label: '进球数' },
+  { key: 'CORNER_COUNT', label: '角球数' },
+  { key: 'SHOTS_SINGLE', label: '射门次数（单方）' },
+  { key: 'SHOTS_ON_TARGET_SINGLE', label: '射中次数（单方）' },
+  { key: 'RED_CARDS_SINGLE', label: '红牌（单方）' },
+];
+
+const DEFAULT_FILTER_MODEL: FilterModelState = {
+  startMinute: 65,
+  endMinute: 80,
+  type: 'GOAL_COUNT',
+  value: 2,
 };
 
-// 联赛筛选选项
-const LEAGUE_FILTERS = [
-  { key: '英超', label: '英超' },
-  { key: '西甲', label: '西甲' },
-  { key: '德甲', label: '德甲' },
-  { key: '意甲', label: '意甲' },
-  { key: '法甲', label: '法甲' },
-  { key: '欧冠', label: '欧冠' },
-];
+function normalizeFilterModel(model: FilterModelState): FilterModelState {
+  const start = Math.max(0, Math.min(90, Number(model.startMinute)));
+  const end = Math.max(0, Math.min(90, Number(model.endMinute)));
+  const [a, b] = start <= end ? [start, end] : [end, start];
+  return {
+    ...model,
+    startMinute: a,
+    endMinute: b,
+  };
+}
 
 // ============================================
 // InfoTooltip 组件
@@ -226,14 +238,10 @@ export function TerminalPage() {
   const [soundEnabled, setSoundEnabled] = useState(soundService.isEnabled());
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
-  // 筛选状态
-  const [filters, setFilters] = useState<TerminalFilters>({
-    league: 'ALL',
-    minMinute: 0,
-    minRating: 0,
-    oddsConfirmed: false,
-    hideNoOddsCoverage: false, // 默认不隐藏
-  });
+  // 筛选模型状态（替换旧的快捷筛选 UI）
+  const [showFilterModel, setShowFilterModel] = useState(false);
+  const [filterModelDraft, setFilterModelDraft] = useState<FilterModelState>(DEFAULT_FILTER_MODEL);
+  const [filterModelApplied, setFilterModelApplied] = useState<FilterModelState>(DEFAULT_FILTER_MODEL);
 
   // React Query 获取数据
   const {
@@ -267,30 +275,50 @@ export function TerminalPage() {
     // ⚠️ Guard：供应商无赔率的比赛只作为 stats 参考场，不进入终端页机会/推荐列表
     filtered = filtered.filter(m => !m.noOddsFromProvider);
 
-    if (filters.league !== 'ALL') {
-      filtered = filtered.filter(m =>
-        m.league === filters.league ||
-        m.leagueShort === filters.league ||
-        LEAGUE_SHORT[m.league] === filters.league
-      );
-    }
-    if (filters.minMinute > 0) {
-      filtered = filtered.filter(m => m.minute >= filters.minMinute);
-    }
-    if (filters.minRating > 0) {
-      filtered = filtered.filter(m => (m.scoreResult?.totalScore ?? 0) >= filters.minRating);
-    }
-    if (filters.oddsConfirmed) {
-      filtered = filtered.filter(m =>
-        m.scoreResult?.factors.oddsFactor?.dataAvailable &&
-        (m.scoreResult?.factors.oddsFactor?.score ?? 0) >= 5
-      );
-    }
+    // 按筛选模型：时间段 + 指标阈值
+    const model = normalizeFilterModel(filterModelApplied);
+    filtered = filtered.filter(m => m.minute >= model.startMinute && m.minute <= model.endMinute);
+    filtered = filtered.filter(m => {
+      const threshold = model.value;
+      let metricValue: number | null = null;
 
-    // 隐藏无赔率覆盖的联赛
-    if (filters.hideNoOddsCoverage) {
-      filtered = filtered.filter(m => hasLiveOddsCoverage(m.leagueId));
-    }
+      switch (model.type) {
+        case 'GOAL_INDEX':
+          metricValue = m.scoreResult?.totalScore ?? m.killScore ?? null;
+          break;
+        case 'POSSESSION_RATE':
+          metricValue = m.stats?.possession?.home ?? null;
+          break;
+        case 'HANDICAP_INDEX':
+          metricValue = m.home.handicap ?? null;
+          break;
+        case 'GOAL_COUNT':
+          metricValue = m.totalGoals ?? (m.home.score + m.away.score);
+          break;
+        case 'CORNER_COUNT': {
+          if (m.corners) {
+            metricValue = (m.corners.home ?? 0) + (m.corners.away ?? 0);
+          } else if (m.stats?.corners) {
+            metricValue = (m.stats.corners.home ?? 0) + (m.stats.corners.away ?? 0);
+          } else {
+            metricValue = null;
+          }
+          break;
+        }
+        case 'SHOTS_SINGLE':
+          metricValue = m.stats?.shots?.home ?? null;
+          break;
+        case 'SHOTS_ON_TARGET_SINGLE':
+          metricValue = m.stats?.shotsOnTarget?.home ?? null;
+          break;
+        case 'RED_CARDS_SINGLE':
+          metricValue = m.cards?.red?.home ?? null;
+          break;
+      }
+
+      if (metricValue === null || Number.isNaN(metricValue)) return false;
+      return metricValue >= threshold;
+    });
 
     // 排序：赔率确认优先 → 评分高 → 置信度高 → 75分钟以上优先
     filtered.sort((a, b) => {
@@ -317,7 +345,7 @@ export function TerminalPage() {
     });
 
     return filtered;
-  }, [matchesData, filters]);
+  }, [matchesData, filterModelApplied]);
 
   // 统计数据
   const stats = useMemo(() => {
@@ -327,10 +355,6 @@ export function TerminalPage() {
       scoreResult: calculateDynamicScore(m),
     })).filter(m => m.scoreResult !== null);
 
-    // 计算无赔率覆盖的比赛数量
-    const noOddsCoverageCount = all.filter(m => !hasLiveOddsCoverage(m.leagueId)).length;
-    const withOddsCoverageCount = all.length - noOddsCoverageCount;
-
     return {
       live: all.length,
       high80: withScores.filter(m => (m.scoreResult?.totalScore ?? 0) >= 80).length,
@@ -338,8 +362,6 @@ export function TerminalPage() {
       avgRating: withScores.length > 0
         ? Math.round(withScores.reduce((sum, m) => sum + (m.scoreResult?.totalScore ?? 0), 0) / withScores.length)
         : 0,
-      noOddsCoverageCount,
-      withOddsCoverageCount,
     };
   }, [matchesData]);
 
@@ -369,11 +391,6 @@ export function TerminalPage() {
       }
       return next;
     });
-  }, []);
-
-  // 快捷筛选
-  const toggleFilter = useCallback((key: keyof TerminalFilters, value: unknown) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
   }, []);
 
   const apiLatency = Math.floor(Math.random() * 50) + 20;
@@ -434,75 +451,152 @@ export function TerminalPage() {
       {/* 筛选栏 */}
       {/* ============================================ */}
       <div className="flex-shrink-0 h-9 bg-[#0d0d0d] border-b border-[#1a1a1a] flex items-center px-4 gap-2">
-        {/* 联赛筛选 */}
-        <FilterTag
-          active={filters.league === 'ALL'}
-          onClick={() => toggleFilter('league', 'ALL')}
+        <button
+          type="button"
+          onClick={() => {
+            setFilterModelDraft(filterModelApplied);
+            setShowFilterModel(true);
+          }}
+          className="px-3 py-1.5 rounded border border-[#333] bg-[#111] hover:bg-[#1a1a1a] text-[#e0e0e0] text-[12px] font-medium transition-colors"
+          title="打开筛选模型"
         >
-          全部
-        </FilterTag>
-        {LEAGUE_FILTERS.map(league => (
-          <FilterTag
-            key={league.key}
-            active={filters.league === league.key}
-            onClick={() => toggleFilter('league', league.key)}
-          >
-            {league.label}
-          </FilterTag>
-        ))}
+          筛选模型
+        </button>
 
         <span className="text-[#333] mx-1">|</span>
 
-        {/* 时间筛选 */}
-        <FilterTag
-          active={filters.minMinute >= 75}
-          onClick={() => toggleFilter('minMinute', filters.minMinute >= 75 ? 0 : 75)}
-          color="warning"
-        >
-          75分钟+
-        </FilterTag>
-
-        {/* 评分筛选 */}
-        <FilterTag
-          active={filters.minRating >= 80}
-          onClick={() => toggleFilter('minRating', filters.minRating >= 80 ? 0 : 80)}
-          color="danger"
-        >
-          80分+
-        </FilterTag>
-
-        {/* 赔率确认 */}
-        <FilterTag
-          active={filters.oddsConfirmed}
-          onClick={() => toggleFilter('oddsConfirmed', !filters.oddsConfirmed)}
-          color="success"
-        >
-          赔率确认
-          <InfoTooltip metric="oddsConfirm" />
-        </FilterTag>
-
-        {/* 有赔率覆盖 */}
-        <FilterTag
-          active={filters.hideNoOddsCoverage}
-          onClick={() => toggleFilter('hideNoOddsCoverage', !filters.hideNoOddsCoverage)}
-          color="primary"
-          title="只显示有滚球赔率覆盖的联赛（欧洲五大联赛、欧战、国际大赛等）"
-        >
-          💰 有赔率
-          {!filters.hideNoOddsCoverage && stats.noOddsCoverageCount > 0 && (
-            <span className="ml-1 text-[10px] opacity-60">(-{stats.noOddsCoverageCount})</span>
-          )}
-        </FilterTag>
+        <span className="text-[#888] text-[12px] truncate">
+          {filterModelApplied.startMinute}~{filterModelApplied.endMinute}'
+          {' '}
+          {FILTER_MODEL_TYPES.find(t => t.key === filterModelApplied.type)?.label ?? ''}
+          {' '}
+          &gt;= {filterModelApplied.value}
+        </span>
 
         <div className="flex-1" />
 
-        <span className="text-[#555]">
+        <span className="text-[#555] text-[12px]">
           显示 {processedMatches.length} 场
-          {filters.hideNoOddsCoverage && stats.noOddsCoverageCount > 0 && (
-            <span className="text-[#444]"> (隐藏{stats.noOddsCoverageCount}场无赔率)</span>
-          )}
         </span>
       </div>
+
+      {showFilterModel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowFilterModel(false)}
+          />
+
+          <div className="relative w-full max-w-sm bg-[#0f0f0f] border border-[#222] rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[#e0e0e0] font-bold text-[14px]">模型设置</div>
+              <button
+                type="button"
+                onClick={() => setShowFilterModel(false)}
+                className="p-1 rounded hover:bg-white/10 text-[#888]"
+                title="关闭"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="text-[12px] text-[#aaa] mb-2">选择时间段：开始/结束（0-90分钟）</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={90}
+                    step={1}
+                    value={filterModelDraft.startMinute}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setFilterModelDraft(prev => ({
+                        ...prev,
+                        startMinute: Number.isFinite(next) ? next : prev.startMinute,
+                      }));
+                    }}
+                    className="w-full bg-[#111] border border-[#222] rounded px-3 py-2 text-[#e0e0e0] text-[13px] font-mono focus:outline-none focus:border-[#00d4ff]"
+                  />
+                  <span className="text-[#888]">~</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={90}
+                    step={1}
+                    value={filterModelDraft.endMinute}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setFilterModelDraft(prev => ({
+                        ...prev,
+                        endMinute: Number.isFinite(next) ? next : prev.endMinute,
+                      }));
+                    }}
+                    className="w-full bg-[#111] border border-[#222] rounded px-3 py-2 text-[#e0e0e0] text-[13px] font-mono focus:outline-none focus:border-[#00d4ff]"
+                  />
+                </div>
+                <div className="text-[11px] text-[#666] mt-1">任1分钟都可以选择（步长=1）</div>
+              </div>
+
+              <div>
+                <div className="text-[12px] text-[#aaa] mb-2">选择类型</div>
+                <select
+                  value={filterModelDraft.type}
+                  onChange={(e) => {
+                    const next = e.target.value as FilterModelType;
+                    setFilterModelDraft(prev => ({ ...prev, type: next }));
+                  }}
+                  className="w-full bg-[#111] border border-[#222] rounded px-3 py-2 text-[#e0e0e0] text-[13px] focus:outline-none focus:border-[#00d4ff]"
+                >
+                  {FILTER_MODEL_TYPES.map(t => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="text-[12px] text-[#aaa] mb-2">输入值（阈值 &gt;=）</div>
+                <input
+                  type="number"
+                  step={filterModelDraft.type === 'HANDICAP_INDEX' ? 0.25 : 1}
+                  value={filterModelDraft.value}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setFilterModelDraft(prev => ({ ...prev, value: Number.isFinite(next) ? next : prev.value }));
+                  }}
+                  className="w-full bg-[#111] border border-[#222] rounded px-3 py-2 text-[#e0e0e0] text-[13px] font-mono focus:outline-none focus:border-[#00d4ff]"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-3 pt-3 border-t border-[#222]">
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterModelDraft(filterModelApplied);
+                  setShowFilterModel(false);
+                }}
+                className="flex-1 px-3 py-2 rounded bg-[#111] text-[#888] border border-[#222] hover:bg-[#1a1a1a] transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterModelApplied(normalizeFilterModel(filterModelDraft));
+                  setShowFilterModel(false);
+                }}
+                className="flex-1 px-3 py-2 rounded bg-[#00d4ff]/20 text-[#00d4ff] border border-[#00d4ff]/30 hover:bg-[#00d4ff]/30 transition-colors"
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============================================ */}
       {/* 主内容区 */}
@@ -632,40 +726,6 @@ export function TerminalPage() {
 // ============================================
 // 子组件
 // ============================================
-
-function FilterTag({
-  children,
-  active,
-  onClick,
-  color = 'primary',
-  title,
-}: {
-  children: React.ReactNode;
-  active: boolean;
-  onClick: () => void;
-  color?: 'primary' | 'warning' | 'danger' | 'success';
-  title?: string;
-}) {
-  const colors = {
-    primary: active ? 'bg-[#00d4ff] text-black' : 'text-[#00d4ff] border-[#00d4ff]/30',
-    warning: active ? 'bg-[#ffaa00] text-black' : 'text-[#ffaa00] border-[#ffaa00]/30',
-    danger: active ? 'bg-[#ff4444] text-white' : 'text-[#ff4444] border-[#ff4444]/30',
-    success: active ? 'bg-[#00ff88] text-black' : 'text-[#00ff88] border-[#00ff88]/30',
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={`px-3 py-1 text-[12px] font-medium border rounded transition-colors ${
-        active ? colors[color] : `${colors[color]} hover:bg-[#1a1a1a]`
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function TerminalRow({
   match,
