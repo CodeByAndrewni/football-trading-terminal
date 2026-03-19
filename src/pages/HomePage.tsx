@@ -92,11 +92,12 @@ const FILTER_MODEL_TYPES: Array<{ key: FilterModelType; label: string }> = [
   { key: 'RED_CARDS_SINGLE', label: '红牌（单方）' },
 ];
 
+// 默认配置：尽量避免“空筛选结果”，同时保证 UI 一打开就能看到比赛
 const DEFAULT_FILTER_MODEL: FilterModelState = {
-  startMinute: 65,
-  endMinute: 80,
+  startMinute: 0,
+  endMinute: 90,
   type: 'GOAL_COUNT',
-  value: 2,
+  value: 0,
 };
 
 function normalizeFilterModel(model: FilterModelState): FilterModelState {
@@ -315,7 +316,11 @@ export function HomePage() {
 
     // 过滤模型：时间段 + 类型阈值
     const model = normalizeFilterModel(filterModelApplied);
-    filtered = filtered.filter(m => m.minute >= model.startMinute && m.minute <= model.endMinute);
+    filtered = filtered.filter(m => {
+      // 处理补时：API 的 elapsed 可能会超过 90
+      const minute = Math.min(90, Math.max(0, m.minute));
+      return minute >= model.startMinute && minute <= model.endMinute;
+    });
 
     filtered = filtered.filter(m => {
       const threshold = model.value;
@@ -323,39 +328,50 @@ export function HomePage() {
 
       switch (model.type) {
         case 'GOAL_INDEX':
-          metricValue = m.scoreResult?.totalScore ?? m.killScore ?? null;
+          metricValue = m.scoreResult?.totalScore ?? m.killScore ?? 0;
           break;
-        case 'POSSESSION_RATE':
-          metricValue = m.stats?.possession?.home ?? null;
+        case 'POSSESSION_RATE': {
+          const home = m.stats?.possession?.home ?? 0;
+          const away = m.stats?.possession?.away ?? 0;
+          metricValue = Math.max(home, away);
           break;
-        case 'HANDICAP_INDEX':
-          metricValue = m.home.handicap ?? null;
+        }
+        case 'HANDICAP_INDEX': {
+          const home = m.home.handicap ?? 0;
+          const away = (m as any).away?.handicap ?? 0;
+          metricValue = Math.max(home, away);
           break;
+        }
         case 'GOAL_COUNT':
           metricValue = m.totalGoals ?? (m.home.score + m.away.score);
           break;
         case 'CORNER_COUNT': {
-          if (m.corners) {
-            metricValue = (m.corners.home ?? 0) + (m.corners.away ?? 0);
-          } else if (m.stats?.corners) {
-            metricValue = (m.stats.corners.home ?? 0) + (m.stats.corners.away ?? 0);
-          } else {
-            metricValue = null;
-          }
+          const homeCorners = m.corners?.home ?? m.stats?.corners?.home ?? 0;
+          const awayCorners = m.corners?.away ?? m.stats?.corners?.away ?? 0;
+          metricValue = (homeCorners ?? 0) + (awayCorners ?? 0);
           break;
         }
-        case 'SHOTS_SINGLE':
-          metricValue = m.stats?.shots?.home ?? null;
+        case 'SHOTS_SINGLE': {
+          const home = m.stats?.shots?.home ?? 0;
+          const away = m.stats?.shots?.away ?? 0;
+          metricValue = Math.max(home, away);
           break;
-        case 'SHOTS_ON_TARGET_SINGLE':
-          metricValue = m.stats?.shotsOnTarget?.home ?? null;
+        }
+        case 'SHOTS_ON_TARGET_SINGLE': {
+          const home = m.stats?.shotsOnTarget?.home ?? 0;
+          const away = m.stats?.shotsOnTarget?.away ?? 0;
+          metricValue = Math.max(home, away);
           break;
-        case 'RED_CARDS_SINGLE':
-          metricValue = m.cards?.red?.home ?? null;
+        }
+        case 'RED_CARDS_SINGLE': {
+          const home = m.cards?.red?.home ?? 0;
+          const away = m.cards?.red?.away ?? 0;
+          metricValue = Math.max(home, away);
           break;
+        }
       }
 
-      if (metricValue === null || Number.isNaN(metricValue)) return false;
+      if (Number.isNaN(metricValue)) return false;
       return metricValue >= threshold;
     });
 
