@@ -4,7 +4,7 @@
 
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { X, Home, Swords, CornerUpRight, Settings, Wifi, WifiOff, BarChart3, FileText } from 'lucide-react';
+import { X, Home, Swords, CornerUpRight, Settings, Wifi, WifiOff, BarChart3, FileText, Bot } from 'lucide-react';
 import { isApiKeyConfigured } from '../../services/api';
 
 interface MobileMenuProps {
@@ -46,6 +46,7 @@ export function MobileMenu({ isOpen, onClose, onOpenSettings }: MobileMenuProps)
     { path: '/review', label: '复盘台', icon: FileText },
     { path: '/corners', label: '角球分析', icon: CornerUpRight },
     { path: '/backtest', label: '盘口回测', icon: BarChart3 },
+    { path: '/ai', label: 'AI 问答', icon: Bot },
   ];
 
   return (

@@ -345,6 +345,10 @@ bun run preview
 | 变量名 | 说明 | 必需 | 默认值 |
 |--------|------|------|--------|
 | `FOOTBALL_API_KEY` | API-Football API Key | 否 | - |
+| `MINIMAX_API_KEY` | Minimax 中国站 API Key（AI 问答：`POST /api/ai/chat`） | 是（AI） | - |
+| `MINIMAX_MODEL` | Minimax 文本对话模型名 | 否 | `MiniMax-M2.7` |
+| `PERPLEXITY_API_KEY` | Perplexity API Key（可选） | 否 | - |
+| `PERPLEXITY_MODEL` | Perplexity sonar 模型名（可选） | 否 | `sonar-pro` |
 
 **获取 API Key**: [https://www.api-football.com/](https://www.api-football.com/)
 

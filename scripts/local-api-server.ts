@@ -12,8 +12,13 @@ import fixturesHandler from '../api/football/fixtures';
 import oddsHandler from '../api/football/odds';
 import statsHandler from '../api/football/stats';
 import standingsHandler from '../api/football/standings';
+import aiChatHandler from '../api/ai/chat';
 
-const PORT = 3000;
+const PORT = typeof process.env.PORT === 'string'
+  ? Number(process.env.PORT)
+  : typeof process.env.AI_API_PORT === 'string'
+    ? Number(process.env.AI_API_PORT)
+    : 3000;
 
 // 创建模拟的 Vercel Response 对象
 function createMockResponse(): VercelResponse {
@@ -46,6 +51,7 @@ const routes: Record<string, (req: VercelRequest, res: VercelResponse) => Promis
   '/api/football/odds': oddsHandler,
   '/api/football/stats': statsHandler,
   '/api/football/standings': standingsHandler,
+  '/api/ai/chat': aiChatHandler,
 };
 
 // HTTP 服务器
@@ -58,7 +64,7 @@ const server = Bun.serve({
     // 添加 CORS 头
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     };
 
@@ -85,12 +91,15 @@ const server = Bun.serve({
       }
 
       // 创建模拟的 Vercel Request
+      // 注意：部分 handler 会调用 `req.json()`，所以这里需要实现该方法。
+      const parsedBody = request.method !== 'GET' ? await request.json().catch(() => ({})) : {};
       const mockReq = {
         method: request.method,
         url: request.url,
         query,
         headers: Object.fromEntries(request.headers.entries()),
-        body: request.method !== 'GET' ? await request.json().catch(() => ({})) : {},
+        body: parsedBody,
+        json: async () => parsedBody,
       } as any as VercelRequest;
 
       // 创建模拟的 Vercel Response

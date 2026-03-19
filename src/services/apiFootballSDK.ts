@@ -588,7 +588,7 @@ export async function getFixturePlayers(fixtureId: number): Promise<FixturePlaye
 export async function getHeadToHead(
   team1Id: number,
   team2Id: number,
-  last: number = 10
+  last = 10
 ): Promise<Match[]> {
   const cacheKey = `h2h:${team1Id}:${team2Id}:${last}`;
   const cached = getCache<Match[]>(cacheKey);

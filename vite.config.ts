@@ -199,6 +199,12 @@ export default defineConfig(({ mode }) => {
           }
         },
 
+        // 本地联调：把 AI 请求转发到 bun 跑的本地 API server
+        '/api/ai': {
+          target: `http://localhost:${env.AI_API_PORT || '3000'}`,
+          changeOrigin: true,
+        },
+
         // Sportmonks API - Third Data Source (支持中文)
         '/api/sportmonks': {
           target: 'https://api.sportmonks.com',

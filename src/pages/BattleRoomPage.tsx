@@ -170,7 +170,7 @@ export function BattleRoomPage() {
 
       const scoreResult = calculateDynamicScore(match);
 
-      let effectiveScoreResult = scoreResult;
+      const effectiveScoreResult = scoreResult;
       let signalResult: SignalStrengthResult | null = null;
 
       if (scoreResult) {

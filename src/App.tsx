@@ -20,6 +20,7 @@ const TerminalPage = lazy(() => import('./pages/TerminalPage'));
 const BattleRoomPage = lazy(() => import('./pages/BattleRoomPage'));
 const ReviewPage = lazy(() => import('./pages/ReviewPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const AiChatPage = lazy(() => import('./pages/AiChatPage'));
 
 // 加载中显示
 function PageLoading() {
@@ -71,6 +72,9 @@ function App() {
 
             {/* 历史比赛页 */}
             <Route path="/history" element={<HistoryPage />} />
+
+            {/* AI 问答 */}
+            <Route path="/ai" element={<AiChatPage />} />
 
             {/* 旧路由重定向 */}
             <Route path="/monitor" element={<Navigate to="/battle" replace />} />

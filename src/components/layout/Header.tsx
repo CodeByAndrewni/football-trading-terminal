@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Swords, CornerUpRight, Settings, Wifi, WifiOff, Menu, BarChart3, FileText, Cloud, CloudOff, Globe } from 'lucide-react';
+import { Swords, CornerUpRight, Settings, Wifi, WifiOff, Menu, BarChart3, FileText, Cloud, CloudOff, Globe, Bot } from 'lucide-react';
 import { ApiSettingsPanel } from '../settings/ApiSettingsPanel';
 import { MobileMenu } from './MobileMenu';
 import { SportmonksDebugPanel } from '../debug/SportmonksDebugPanel';
@@ -101,6 +101,15 @@ export function Header({ selectedLeague, onSelectLeague }: HeaderProps) {
               >
                 <BarChart3 className="w-4 h-4" />
                 <span className="text-sm font-medium">回测</span>
+              </Link>
+
+              {/* AI 问答入口 */}
+              <Link
+                to="/ai"
+                className="hidden md:flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-bg-component border border-border-default text-text-secondary hover:text-text-primary hover:border-accent-primary transition-all"
+              >
+                <Bot className="w-4 h-4" />
+                <span className="text-sm font-medium hidden lg:inline">AI 问答</span>
               </Link>
 
               {/* 云同步状态 */}
