@@ -62,6 +62,55 @@ interface Filters {
 }
 
 // ============================================
+// 筛选模型（替换 HomePage 顶部旧筛选条）
+// ============================================
+type FilterModelType =
+  | 'GOAL_INDEX'
+  | 'POSSESSION_RATE'
+  | 'HANDICAP_INDEX'
+  | 'GOAL_COUNT'
+  | 'CORNER_COUNT'
+  | 'SHOTS_SINGLE'
+  | 'SHOTS_ON_TARGET_SINGLE'
+  | 'RED_CARDS_SINGLE';
+
+interface FilterModelState {
+  startMinute: number; // 0-90
+  endMinute: number; // 0-90
+  type: FilterModelType;
+  value: number;
+}
+
+const FILTER_MODEL_TYPES: Array<{ key: FilterModelType; label: string }> = [
+  { key: 'GOAL_INDEX', label: '进球指数' },
+  { key: 'POSSESSION_RATE', label: '控球率' },
+  { key: 'HANDICAP_INDEX', label: '让球指数' },
+  { key: 'GOAL_COUNT', label: '进球数' },
+  { key: 'CORNER_COUNT', label: '角球数' },
+  { key: 'SHOTS_SINGLE', label: '射门次数（单方）' },
+  { key: 'SHOTS_ON_TARGET_SINGLE', label: '射中次数（单方）' },
+  { key: 'RED_CARDS_SINGLE', label: '红牌（单方）' },
+];
+
+const DEFAULT_FILTER_MODEL: FilterModelState = {
+  startMinute: 65,
+  endMinute: 80,
+  type: 'GOAL_COUNT',
+  value: 2,
+};
+
+function normalizeFilterModel(model: FilterModelState): FilterModelState {
+  const start = Math.max(0, Math.min(90, Number(model.startMinute)));
+  const end = Math.max(0, Math.min(90, Number(model.endMinute)));
+  const [a, b] = start <= end ? [start, end] : [end, start];
+  return {
+    ...model,
+    startMinute: a,
+    endMinute: b,
+  };
+}
+
+// ============================================
 // API 状态判断辅助函数
 // ============================================
 
@@ -132,6 +181,11 @@ export function HomePage() {
     scannerMode: false, // Phase 2: 失衡扫描器模式
     oddsMode: 'ALL', // 默认不过滤盘口类型
   });
+
+  // 筛选模型状态（替换旧的顶部筛选条）
+  const [showFilterModel, setShowFilterModel] = useState(false);
+  const [filterModelDraft, setFilterModelDraft] = useState<FilterModelState>(DEFAULT_FILTER_MODEL);
+  const [filterModelApplied, setFilterModelApplied] = useState<FilterModelState>(DEFAULT_FILTER_MODEL);
 
   // Phase 2: 扫描器配置
   const [scannerConfig, setScannerConfig] = useState<Partial<ScannerFilterConfig>>({
@@ -259,102 +313,74 @@ export function HomePage() {
       filtered = filtered.filter(m => !m.noOddsFromProvider);
     }
 
-    // 联赛筛选
-    if (filters.league !== 'ALL') {
-      filtered = filtered.filter(m =>
-        m.league === filters.league ||
-        m.leagueShort === filters.league
-      );
-    }
+    // 过滤模型：时间段 + 类型阈值
+    const model = normalizeFilterModel(filterModelApplied);
+    filtered = filtered.filter(m => m.minute >= model.startMinute && m.minute <= model.endMinute);
 
-    // 分钟筛选 - 核心功能
-    if (!filters.showAll) {
-      if (filters.scannerMode) {
-        // Phase 2: 失衡扫描器模式
-        // 使用内联扫描逻辑，避免循环依赖
-        filtered = filtered.filter(m => {
-          const minute = m.minute;
-          const goalDiff = Math.abs((m.home?.score ?? 0) - (m.away?.score ?? 0));
-          const hasStats = m.stats?._realDataAvailable;
+    filtered = filtered.filter(m => {
+      const threshold = model.value;
+      let metricValue: number | null = null;
 
-          // 基础条件: 75+ 分钟，分差 ≤1
-          if (minute < 75 || goalDiff > 1 || !hasStats) return false;
-
-          // 攻势条件: xG差 >= 0.5 或 射门差 >= 5
-          const xgHome = m.stats?.xG?.home ?? 0;
-          const xgAway = m.stats?.xG?.away ?? 0;
-          const xgDiff = Math.abs(xgHome - xgAway);
-
-          const shotsHome = m.stats?.shots?.home ?? 0;
-          const shotsAway = m.stats?.shots?.away ?? 0;
-          const shotsDiff = Math.abs(shotsHome - shotsAway);
-
-          return xgDiff >= 0.5 || shotsDiff >= 5;
-        });
-      } else if (filters.minMinute === 1) {
-        // "上半场" = minute <= 45 或 status = HT
-        filtered = filtered.filter(m =>
-          m.minute <= 45 || m.status?.toLowerCase() === 'ht'
-        );
-      } else if (filters.minMinute === -1) {
-        // "信号" = 65+分钟且有评分 或 有高评分
-        filtered = filtered.filter(m => {
-          const score = m.scoreResult?.totalScore ?? 0;
-          return (m.minute >= 80 && score >= 70) || (m.minute >= 65 && score >= 80);
-        });
-      } else if (filters.minMinute > 0) {
-        // 65+ 等筛选
-        filtered = filtered.filter(m => m.minute >= filters.minMinute);
-      }
-    }
-
-    // 排序：扫描器模式下按失衡评分，否则信号优先
-    if (filters.scannerMode) {
-      // Phase 2: 按 imbalanceScore 排序
-      filtered.sort((a, b) => {
-        // 计算失衡评分
-        const getImbalanceScore = (m: typeof a): number => {
-          if (!m.stats) return 0;
-          const shotsDiff = Math.abs((m.stats.shots?.home ?? 0) - (m.stats.shots?.away ?? 0));
-          const xgDiff = Math.abs((m.stats.xG?.home ?? 0) - (m.stats.xG?.away ?? 0));
-          const sotDiff = Math.abs((m.stats.shotsOnTarget?.home ?? 0) - (m.stats.shotsOnTarget?.away ?? 0));
-          return shotsDiff * 3 + xgDiff * 25 + sotDiff * 5;
-        };
-        const aImbalance = getImbalanceScore(a);
-        const bImbalance = getImbalanceScore(b);
-
-        // 优先按失衡评分，然后按分钟
-        if (Math.abs(aImbalance - bImbalance) > 5) {
-          return bImbalance - aImbalance;
+      switch (model.type) {
+        case 'GOAL_INDEX':
+          metricValue = m.scoreResult?.totalScore ?? m.killScore ?? null;
+          break;
+        case 'POSSESSION_RATE':
+          metricValue = m.stats?.possession?.home ?? null;
+          break;
+        case 'HANDICAP_INDEX':
+          metricValue = m.home.handicap ?? null;
+          break;
+        case 'GOAL_COUNT':
+          metricValue = m.totalGoals ?? (m.home.score + m.away.score);
+          break;
+        case 'CORNER_COUNT': {
+          if (m.corners) {
+            metricValue = (m.corners.home ?? 0) + (m.corners.away ?? 0);
+          } else if (m.stats?.corners) {
+            metricValue = (m.stats.corners.home ?? 0) + (m.stats.corners.away ?? 0);
+          } else {
+            metricValue = null;
+          }
+          break;
         }
-        return b.minute - a.minute;
-      });
-    } else {
-      // 原有排序逻辑
-      filtered.sort((a, b) => {
-        const aScore = a.scoreResult?.totalScore ?? 0;
-        const bScore = b.scoreResult?.totalScore ?? 0;
+        case 'SHOTS_SINGLE':
+          metricValue = m.stats?.shots?.home ?? null;
+          break;
+        case 'SHOTS_ON_TARGET_SINGLE':
+          metricValue = m.stats?.shotsOnTarget?.home ?? null;
+          break;
+        case 'RED_CARDS_SINGLE':
+          metricValue = m.cards?.red?.home ?? null;
+          break;
+      }
 
-        // 1. 高分信号置顶 (80+分钟且>=70分 或 65+分钟且>=80分)
-        const aIsSignal = (a.minute >= 80 && aScore >= 70) || (a.minute >= 65 && aScore >= 80);
-        const bIsSignal = (b.minute >= 80 && bScore >= 70) || (b.minute >= 65 && bScore >= 80);
-        if (aIsSignal && !bIsSignal) return -1;
-        if (bIsSignal && !aIsSignal) return 1;
+      if (metricValue === null || Number.isNaN(metricValue)) return false;
+      return metricValue >= threshold;
+    });
 
-        // 2. 65+分钟优先
-        if (a.minute >= 65 && b.minute < 65) return -1;
-        if (b.minute >= 65 && a.minute < 65) return 1;
+    // 排序：赔率确认优先 → 评分高 → 置信度高 → 分钟越后越优先
+    filtered.sort((a, b) => {
+      const aOdds = a.scoreResult?.factors.oddsFactor?.dataAvailable &&
+        (a.scoreResult?.factors.oddsFactor?.score ?? 0) >= 5;
+      const bOdds = b.scoreResult?.factors.oddsFactor?.dataAvailable &&
+        (b.scoreResult?.factors.oddsFactor?.score ?? 0) >= 5;
+      if (aOdds !== bOdds) return bOdds ? 1 : -1;
 
-        // 3. 按评分排序
-        if (aScore !== bScore) return bScore - aScore;
+      const ratingDiff = (b.scoreResult?.totalScore ?? 0) - (a.scoreResult?.totalScore ?? 0);
+      if (Math.abs(ratingDiff) > 5) return ratingDiff;
 
-        // 4. 按分钟排序（倒序）
-        return b.minute - a.minute;
-      });
-    }
+      const confDiff = (b.scoreResult?.confidence ?? 0) - (a.scoreResult?.confidence ?? 0);
+      if (Math.abs(confDiff) > 10) return confDiff;
+
+      if (a.minute >= 75 && b.minute < 75) return -1;
+      if (b.minute >= 75 && a.minute < 75) return 1;
+
+      return ratingDiff;
+    });
 
     return filtered;
-  }, [liveMatches, matchesData, filters, scannerConfig, liveViewMode]);
+  }, [liveMatches, matchesData, filterModelApplied, liveViewMode]);
 
   // Phase 2: 扫描器结果
   const scannerResults = useMemo(() => {
@@ -649,10 +675,26 @@ export function HomePage() {
           </button>
         </div>
 
-        <span className="text-[#333]">|</span>
+        <button
+          type="button"
+          onClick={() => {
+            setFilterModelDraft(filterModelApplied);
+            setShowFilterModel(true);
+          }}
+          className="px-3 py-2 rounded-lg text-sm font-medium transition-all bg-[#111] text-[#e0e0e0] border border-[#222] hover:bg-[#1a1a1a]"
+          title="打开筛选模型"
+        >
+          筛选模型
+        </button>
+
+        <span className="text-[#888] text-[12px] truncate">
+          {filterModelApplied.startMinute}~{filterModelApplied.endMinute}'{' '}
+          {FILTER_MODEL_TYPES.find(t => t.key === filterModelApplied.type)?.label ?? ''}{' '}
+          &gt;= {filterModelApplied.value}
+        </span>
 
         {/* 核心筛选：全部 / 上半场 / 65+ / 信号 */}
-        <div className="flex items-center gap-2">
+        <div className="hidden flex items-center gap-2">
           <button
             type="button"
             onClick={() => setFilters(f => ({ ...f, showAll: true, minMinute: 0 }))}
@@ -719,10 +761,10 @@ export function HomePage() {
           </button>
         </div>
 
-        <span className="text-[#333]">|</span>
+        <span className="hidden text-[#333]">|</span>
 
         {/* 盘口筛选：全部 / 有滚球 / 无滚球 */}
-        <div className="flex items-center gap-1 bg-[#111] rounded-lg p-1">
+        <div className="hidden flex items-center gap-1 bg-[#111] rounded-lg p-1">
           <button
             type="button"
             onClick={() => setFilters(f => ({ ...f, oddsMode: 'ALL' }))}
@@ -759,7 +801,7 @@ export function HomePage() {
         </div>
 
         {/* 视图模式：机会视图 / 全部 Live */}
-        <div className="flex items-center gap-1 text-xs ml-2">
+        <div className="hidden flex items-center gap-1 text-xs ml-2">
           <button
             type="button"
             onClick={() => setLiveViewMode('OPPORTUNITIES')}
@@ -817,6 +859,124 @@ export function HomePage() {
         </button>
       </div>
 
+      {showFilterModel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowFilterModel(false)}
+          />
+
+          <div className="relative w-full max-w-sm bg-[#0f0f0f] border border-[#222] rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[#e0e0e0] font-bold text-[14px]">模型设置</div>
+              <button
+                type="button"
+                onClick={() => setShowFilterModel(false)}
+                className="p-1 rounded hover:bg-white/10 text-[#888]"
+                title="关闭"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="text-[12px] text-[#aaa] mb-2">选择时间段（0-90分钟）</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={90}
+                    step={1}
+                    value={filterModelDraft.startMinute}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setFilterModelDraft(prev => ({
+                        ...prev,
+                        startMinute: Number.isFinite(next) ? next : prev.startMinute,
+                      }));
+                    }}
+                    className="w-full bg-[#111] border border-[#222] rounded px-3 py-2 text-[#e0e0e0] text-[13px] font-mono focus:outline-none focus:border-[#00d4ff]"
+                  />
+                  <span className="text-[#888]">~</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={90}
+                    step={1}
+                    value={filterModelDraft.endMinute}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setFilterModelDraft(prev => ({
+                        ...prev,
+                        endMinute: Number.isFinite(next) ? next : prev.endMinute,
+                      }));
+                    }}
+                    className="w-full bg-[#111] border border-[#222] rounded px-3 py-2 text-[#e0e0e0] text-[13px] font-mono focus:outline-none focus:border-[#00d4ff]"
+                  />
+                </div>
+                <div className="text-[11px] text-[#666] mt-1">任1分钟都可以选择（步长=1）</div>
+              </div>
+
+              <div>
+                <div className="text-[12px] text-[#aaa] mb-2">选择类型</div>
+                <select
+                  value={filterModelDraft.type}
+                  onChange={(e) => {
+                    const next = e.target.value as FilterModelType;
+                    setFilterModelDraft(prev => ({ ...prev, type: next }));
+                  }}
+                  className="w-full bg-[#111] border border-[#222] rounded px-3 py-2 text-[#e0e0e0] text-[13px] focus:outline-none focus:border-[#00d4ff]"
+                >
+                  {FILTER_MODEL_TYPES.map(t => (
+                    <option key={t.key} value={t.key}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="text-[12px] text-[#aaa] mb-2">输入值（阈值 &gt;=）</div>
+                <input
+                  type="number"
+                  step={filterModelDraft.type === 'HANDICAP_INDEX' ? 0.25 : 1}
+                  value={filterModelDraft.value}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setFilterModelDraft(prev => ({ ...prev, value: Number.isFinite(next) ? next : prev.value }));
+                  }}
+                  className="w-full bg-[#111] border border-[#222] rounded px-3 py-2 text-[#e0e0e0] text-[13px] font-mono focus:outline-none focus:border-[#00d4ff]"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between gap-3 pt-3 border-t border-[#222]">
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterModelDraft(filterModelApplied);
+                  setShowFilterModel(false);
+                }}
+                className="flex-1 px-3 py-2 rounded bg-[#111] text-[#888] border border-[#222] hover:bg-[#1a1a1a] transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterModelApplied(normalizeFilterModel(filterModelDraft));
+                  setShowFilterModel(false);
+                }}
+                className="flex-1 px-3 py-2 rounded bg-[#00d4ff]/20 text-[#00d4ff] border border-[#00d4ff]/30 hover:bg-[#00d4ff]/30 transition-colors"
+              >
+                确定
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ============================================ */}
       {/* 主体内容区 */}
       {/* ============================================ */}
@@ -863,23 +1023,23 @@ export function HomePage() {
                 <div className="text-center">
                   <div className="text-5xl mb-4">⚽</div>
                   <p className="text-[#888] text-lg mb-2">
-                    {filters.showAll
-                      ? (stats.live > 0 ? '暂无符合条件的比赛' : '暂无进行中比赛')
-                      : `暂无 ${filters.minMinute}+ 分钟的比赛`}
+                      {stats.live > 0 ? '暂无符合筛选模型的比赛' : '暂无进行中比赛'}
                   </p>
                   {stats.live > 0 && (
                     <p className="text-[#666] text-sm mb-4">
                       {stats.live} 场比赛进行中
-                      {!filters.showAll && filters.minMinute === 80 && stats.above80 === 0 && ' (均未到80分钟)'}
                     </p>
                   )}
-                  {!filters.showAll && stats.live > 0 && (
+                  {stats.live > 0 && (
                     <button
                       type="button"
-                      onClick={() => setFilters(f => ({ ...f, showAll: true, minMinute: 0 }))}
+                      onClick={() => {
+                        setFilterModelDraft(DEFAULT_FILTER_MODEL);
+                        setFilterModelApplied(DEFAULT_FILTER_MODEL);
+                      }}
                       className="mt-2 px-4 py-2 bg-[#00d4ff]/20 text-[#00d4ff] rounded-lg hover:bg-[#00d4ff]/30 transition-all"
                     >
-                      查看全部比赛
+                      重置筛选模型
                     </button>
                   )}
                 </div>
@@ -889,8 +1049,8 @@ export function HomePage() {
                 matches={processedMatches}
                 onToggleWatch={toggleWatch}
                 watchedMatches={watchedMatches}
-                filters={{ oddsMode: filters.oddsMode }}
-                showImbalanceColumns={filters.scannerMode}
+                filters={{ oddsMode: 'ALL' }}
+                showImbalanceColumns={false}
               />
             ) : (
               <AdvancedMatchTable
