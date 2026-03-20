@@ -1,16 +1,17 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getMatches } from '../lib/kv.js';
+import { parseRequestJsonBody } from './parse-request-json.js';
+import { getMatches } from './kv.js';
 import { buildMatchContext } from '../../src/services/aiContext.js';
 import type { AdvancedMatch } from '../../src/data/advancedMockData';
-import { aggregateMatches, calculateBasicKillScore } from '../lib/aggregator.js';
-import { getLiveFixtures, getStatisticsBatch, getEventsBatch } from '../lib/api-football.js';
+import { aggregateMatches, calculateBasicKillScore } from './aggregator.js';
+import { getLiveFixtures, getStatisticsBatch, getEventsBatch } from './api-football.js';
 import {
   AI_AGENT_TOOLS,
   createFootballQuota,
   executeAgentTool,
   getDefaultMaxFootballCalls,
   getDefaultMaxToolRounds,
-} from '../lib/ai-tool-executor.js';
+} from './ai-tool-executor.js';
 
 const MINIMAX_CHAT_ENDPOINT = 'https://api.minimaxi.com/v1/text/chatcompletion_v2';
 /** OpenAI 兼容 Chat Completions（支持 tools / tool_calls），用于 Agent 模式 */
@@ -386,7 +387,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: { code: 'METHOD_NOT_ALLOWED' }, success: false });
   }
 
-  const body = await req.json().catch(() => null);
+  const body = await parseRequestJsonBody(req);
   const messageRaw = typeof body?.message === 'string' ? body.message : '';
   const message = messageRaw.trim();
 

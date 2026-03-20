@@ -8,8 +8,8 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getMatches, saveMatches, acquireLock, releaseLock, incrementApiCalls, getApiCallsToday, KV_KEYS, KV_CONFIG } from '../lib/kv.js';
-import type { RefreshMeta } from '../lib/kv.js';
+import { getMatches, saveMatches, acquireLock, releaseLock, incrementApiCalls, getApiCallsToday, KV_KEYS, KV_CONFIG } from './kv.js';
+import type { RefreshMeta } from './kv.js';
 import {
   getLiveFixtures,
   getStatisticsBatch,
@@ -18,8 +18,8 @@ import {
   getPrematchOddsBatch,
   getApiCallsThisCycle,
   resetApiCallsThisCycle,
-} from '../lib/api-football.js';
-import { aggregateMatches, calculateBasicKillScore } from '../lib/aggregator.js';
+} from './api-football.js';
+import { aggregateMatches, calculateBasicKillScore } from './aggregator.js';
 
 // ============================================
 // 配置

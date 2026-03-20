@@ -37,11 +37,8 @@ function loadLocalDotEnv() {
 
 loadLocalDotEnv();
 
-// 导入 API 端点（football 已合并为单 catch-all）
-import routeFootballApi from '../api/lib/football-catchall';
-import toolsBundleHandler from '../api/tools-bundle';
-import aiChatHandler from '../api/ai/chat';
-import matchesHandler from '../api/matches/index';
+// 单一入口：与 Vercel `api/[...path].ts` 一致
+import apiRouter from '../api/[...path].ts';
 
 const PORT = typeof process.env.PORT === 'string'
   ? Number(process.env.PORT)
@@ -74,19 +71,6 @@ function createMockResponse(): VercelResponse {
   return res;
 }
 
-// 路由处理
-const routes: Record<string, (req: VercelRequest, res: VercelResponse) => Promise<any>> = {
-  '/api/football/fixtures': routeFootballApi,
-  '/api/football/odds': routeFootballApi,
-  '/api/football/stats': routeFootballApi,
-  '/api/football/standings': routeFootballApi,
-  '/api/test': toolsBundleHandler,
-  '/api/verify-alignment': toolsBundleHandler,
-  '/api/tools-bundle': toolsBundleHandler,
-  '/api/ai/chat': aiChatHandler,
-  '/api/matches': matchesHandler,
-};
-
 // HTTP 服务器
 const server = Bun.serve({
   port: PORT,
@@ -106,8 +90,7 @@ const server = Bun.serve({
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    // 查找匹配的路由
-    const handler = routes[pathname];
+    const handler = pathname.startsWith('/api') ? apiRouter : null;
 
     if (!handler) {
       return new Response(
@@ -168,8 +151,5 @@ const server = Bun.serve({
 });
 
 console.log(`🚀 Local API Server running on http://localhost:${PORT}`);
-console.log('\n📍 Available endpoints:');
-for (const route of Object.keys(routes)) {
-  console.log(`   - http://localhost:${PORT}${route}`);
-}
+console.log('\n📍 All /api/* routes use the unified handler (see api/[...path].ts)');
 console.log('\n✨ Press Ctrl+C to stop\n');

@@ -3,7 +3,7 @@
  * 生产环境通过 vercel.json rewrites 将原路径指向本函数 + ?__route=
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import verifyAlignmentHandler from './lib/verify-alignment-handler.js';
+import verifyAlignmentHandler from './verify-alignment-handler.js';
 
 function handleTest(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Content-Type', 'application/json');
