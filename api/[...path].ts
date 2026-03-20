@@ -5,6 +5,7 @@
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import aiChatRoute from '../lib/vercel-api/ai-chat-route.js';
+import aiJournalRoute from '../lib/vercel-api/ai-journal-route.js';
 import matchesRoute from '../lib/vercel-api/matches-route.js';
 import healthRoute from '../lib/vercel-api/health-route.js';
 import supabaseHeartbeatRoute from '../lib/vercel-api/supabase-heartbeat-route.js';
@@ -26,6 +27,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (pathname === '/api/ai/chat') {
     return aiChatRoute(req, res);
+  }
+  if (pathname === '/api/ai/journal') {
+    return aiJournalRoute(req, res);
   }
   if (pathname.startsWith('/api/football')) {
     return routeFootballApi(req, res);

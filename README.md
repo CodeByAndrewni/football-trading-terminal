@@ -362,6 +362,7 @@ bun run preview
 
 - **默认（非 Agent）**：服务端先读 KV，否则回退拉取少量 live 并聚合，再调用模型（单次上下文）。
 - **Agent（`agent: true` + `mode: MINIMAX`）**：使用 Chat Completions + `tools`，由模型多轮调用 `kv_list_live_matches`、`apifootball_get_fixtures` / `statistics` / `events`，受 `AI_AGENT_*` 限制。**HYBRID / PERPLEXITY 与 Agent 互斥**（需先选 MINIMAX）。
+- **判断日志（复盘记忆）**：部署 Supabase 并执行 `supabase/migrations/005_ai_trade_journal.sql` 后，`POST /api/ai/chat` 会拉取近期 `ai_trade_journal` 记录注入模型，并在每次成功回答后写入新行（需 `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`）。赛后可用 `PATCH /api/ai/journal` 更新 `outcome_status`、比分与 `ai_review`。
 - **Vercel Hobby**：Serverless 函数数量有上限；Agent 多轮请求更易触及 **执行时间** 上限，若超时请降低 `AI_AGENT_MAX_TOOL_ROUNDS` 或升级套餐并配置更长 `maxDuration`（见 Vercel 文档）。
 
 **获取 API Key**: [https://www.api-football.com/](https://www.api-football.com/)

@@ -8,6 +8,7 @@ interface ChatMessage {
   role: ChatRole;
   content: string;
   usedMatchIds?: number[];
+  journalEntryId?: string;
   limitations?: string[];
   /** Agent 模式：服务端返回的工具轮次与 API-Football 用量 */
   agent?: {
@@ -23,6 +24,8 @@ interface AiChatApiResponse {
   answer?: string;
   usedMatchIds?: number[];
   limitations?: string[];
+  /** 写入 Supabase `ai_trade_journal` 后的行 id（未配置数据库则无） */
+  journalEntryId?: string;
   debug?: unknown;
   error?: { code?: string; message?: string };
   agent?: {
@@ -48,7 +51,7 @@ export default function AiChatPage() {
       id: uid(),
       role: "assistant",
       content:
-        "我可以基于当前 live 聚合比赛数据，帮你做问答式分析。\n\n你可以问：\n- 哪几场当前更像“进球机会”？\n- 角球/射门/红牌风险分别是什么？\n- 你的过滤条件下有哪些候选？\n\n注意：角球目前只有“总数”，没有分钟级时间戳，所以“85 分钟后角球概率/角球分钟级统计”无法直接精确计算。",
+        "我是「足球数据分析助手」。每次请求会附带当刻 live 快照，并把近若干天的判断记录从 Supabase（表 ai_trade_journal）读入模型，便于复盘；本条回答若已配置数据库，会写入一条新日志。聊天窗口本身的多轮对话不会自动上传，记忆靠数据库而非浏览器。",
     },
   ]);
   const [loading, setLoading] = useState(false);
@@ -99,6 +102,9 @@ export default function AiChatPage() {
           topN: 10,
           mode: aiMode,
           agent: useAgent,
+          persistJournal: true,
+          journalDays: 10,
+          journalLimit: 40,
         }),
       });
 
@@ -112,6 +118,8 @@ export default function AiChatPage() {
       }
 
       const answer = typeof data.answer === "string" ? data.answer : null;
+      const journalEntryId =
+        typeof data.journalEntryId === "string" ? data.journalEntryId : undefined;
 
       setMessages((prev) => [
         ...prev,
@@ -121,6 +129,7 @@ export default function AiChatPage() {
           content:
             answer ??
             "模型未返回有效答案。你可以稍后再试，或换一个问题（例如更具体的“数据拆解/风险点”。）",
+          journalEntryId,
           usedMatchIds: Array.isArray(data.usedMatchIds)
             ? data.usedMatchIds
             : undefined,
@@ -163,7 +172,7 @@ export default function AiChatPage() {
                       id: uid(),
                       role: "assistant",
                       content:
-                        "我可以基于当前 live 聚合比赛数据，帮你做问答式分析。\n\n注意：角球目前只有“总数”，没有分钟级时间戳，所以“85 分钟后角球概率/角球分钟级统计”无法直接精确计算。",
+                        "我是「足球数据分析助手」。每次请求会附带当刻 live 快照，并把近若干天的判断记录从 Supabase（表 ai_trade_journal）读入模型，便于复盘；本条回答若已配置数据库，会写入一条新日志。聊天窗口本身的多轮对话不会自动上传，记忆靠数据库而非浏览器。",
                     },
                   ]);
                   setErrorBanner(null);
@@ -231,6 +240,12 @@ export default function AiChatPage() {
                     </div>
                   )}
 
+                {m.role === "assistant" && m.journalEntryId && (
+                  <div className="mt-2 text-xs text-text-muted font-mono">
+                    已写入判断日志 journal id：{m.journalEntryId}
+                  </div>
+                )}
+
                 {m.role === "assistant" && m.agent && (
                   <div className="mt-2 text-xs text-text-muted font-mono">
                     Agent：工具轮次 {m.agent.toolRounds} · API-Football{" "}
@@ -268,7 +283,7 @@ export default function AiChatPage() {
                 }}
               >
                 <option value="HYBRID">
-                  HYBRID（Perplexity 方法论 + Minimax JSON 结论）
+                  HYBRID（Perplexity 补充 + Minimax 主答）
                 </option>
                 <option value="MINIMAX">MINIMAX（仅 Minimax）</option>
                 <option value="PERPLEXITY">PERPLEXITY（仅 Perplexity）</option>
@@ -295,7 +310,7 @@ export default function AiChatPage() {
           <div className="flex items-end gap-2">
             <textarea
               className="flex-1 min-h-[44px] max-h-[140px] bg-bg-component border border-border-default rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-primary resize-none"
-              placeholder="输入问题，例如：85分钟后哪些比赛角球更可能？"
+              placeholder="输入问题…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {

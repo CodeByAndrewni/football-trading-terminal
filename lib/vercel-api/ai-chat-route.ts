@@ -1,8 +1,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseRequestJsonBody } from './parse-request-json.js';
 import { getMatches } from './kv.js';
-import { buildMatchContext } from '../../src/services/aiContext.js';
+import { buildMatchContext, type AiChatContext } from '../../src/services/aiContext.js';
 import type { AdvancedMatch } from '../../src/data/advancedMockData';
+import {
+  compactJournalForPrompt,
+  fetchJournalForPrompt,
+  insertAiTradeJournal,
+  insertAiTradeJournalAgent,
+} from './ai-journal-db.js';
 import { aggregateMatches, calculateBasicKillScore } from './aggregator.js';
 import { getLiveFixtures, getStatisticsBatch, getEventsBatch } from './api-football.js';
 import {
@@ -43,6 +49,54 @@ type AgentChatMessage =
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+async function respondChatWithOptionalPersist(
+  res: VercelResponse,
+  payload: Record<string, unknown>,
+  persist:
+    | null
+    | {
+        enabled: boolean;
+        message: string;
+        answer: string;
+        selected: AdvancedMatch[];
+        context: AiChatContext;
+        mode: string;
+      },
+): Promise<void> {
+  if (persist?.enabled && persist.answer) {
+    const id = await insertAiTradeJournal({
+      message: persist.message,
+      answer: persist.answer,
+      selected: persist.selected,
+      context: persist.context,
+      mode: persist.mode,
+    });
+    if (id) payload.journalEntryId = id;
+  }
+  res.status(200).json(payload);
+}
+
+async function respondAgentWithOptionalPersist(
+  res: VercelResponse,
+  payload: Record<string, unknown>,
+  opts: {
+    persist: boolean;
+    message: string;
+    answer: string;
+    agentMeta: { toolRounds: number; footballCallsUsed: number; maxFootballCalls: number };
+  },
+): Promise<void> {
+  if (opts.persist && opts.answer) {
+    const id = await insertAiTradeJournalAgent({
+      message: opts.message,
+      answer: opts.answer,
+      agentMeta: opts.agentMeta,
+    });
+    if (id) payload.journalEntryId = id;
+  }
+  res.status(200).json(payload);
 }
 
 function extractJsonObject(text: string): unknown | null {
@@ -135,7 +189,7 @@ async function callDeepSeekChat(args: {
         model: args.model ?? process.env.MINIMAX_MODEL ?? 'MiniMax-M2.7',
         messages: args.messages,
         stream: false,
-        // MiniMax temperature 取值范围 (0,1]，尽量保持稳定输出（我们要求 JSON）
+        // MiniMax temperature 取值范围 (0,1]
         temperature: typeof args.temperature === 'number' ? args.temperature : 0.6,
         top_p: 0.95,
         max_completion_tokens: 1024,
@@ -244,25 +298,34 @@ async function runAgentChat(
     message: string;
     minimaxKey: string;
     canUseKv: boolean;
+    persistJournal: boolean;
+    journalDays: number;
+    journalLimit: number;
   },
 ): Promise<void> {
   const quota = createFootballQuota(getDefaultMaxFootballCalls());
   const maxRounds = getDefaultMaxToolRounds();
   let toolRounds = 0;
 
+  const journalRows = await fetchJournalForPrompt({
+    days: args.journalDays,
+    limit: args.journalLimit,
+  });
+  const journalCompact = compactJournalForPrompt(journalRows);
+  const journalPrefix =
+    journalCompact.length > 0
+      ? `历史判断记录（数据库 ai_trade_journal）：\n${JSON.stringify(journalCompact)}\n\n`
+      : '';
+
   const systemPrompt = [
-    '你是足球数据分析助手。你可以调用工具读取 KV 缓存或 API-Football 端点。',
-    '先按需要调用工具获取数据，再给出结论。',
-    '不要编造工具未返回的数据或时间点。',
-    'API-Football 的角球数据通常只有角球总数，没有角球发生的具体分钟/时间戳。',
-    '若无法从工具得到数据，请说明原因。',
-    '最终回答必须是严格 JSON（不要 Markdown），不要输出 JSON 以外的文本。',
-    'JSON 结构：{ "answer": string, "usedMatchIds": number[], "limitations"?: string[] }',
+    '你是足球数据分析助手。',
+    '数据来源：通过工具读取——KV 相关工具返回 Vercel KV 中缓存的 live 聚合摘要；API-Football 相关工具实时请求 API-Football 接口。未调用工具时你没有赛场数据。',
+    '记忆与复盘：聊天窗口内的多轮对话不会自动传给模型；与你的判断相关的长期记录来自 Supabase 表 ai_trade_journal。若上方附带了「历史判断记录」JSON，请结合它复盘；本条请求结束后若开启持久化且数据库已配置，将写入新记录便于日后核对赛果。',
   ].join('\n');
 
   const messages: AgentChatMessage[] = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: args.message },
+    { role: 'user', content: `${journalPrefix}用户问题：\n${args.message}` },
   ];
 
   let lastAssistantText: string | null = null;
@@ -350,34 +413,60 @@ async function runAgentChat(
 
   if (parsed && typeof parsed === 'object' && (parsed as any).answer) {
     const extra = Array.isArray((parsed as any).limitations) ? (parsed as any).limitations : [];
-    res.status(200).json({
+    await respondAgentWithOptionalPersist(
+      res,
+      {
+        success: true,
+        ...(parsed as any),
+        usedMatchIds,
+        limitations: [...limitations, ...extra],
+        agent: {
+          toolRounds,
+          footballCallsUsed: quota.used,
+          maxFootballCalls: quota.max,
+          maxToolRounds: maxRounds,
+        },
+      },
+      {
+        persist: args.persistJournal,
+        message: args.message,
+        answer: String((parsed as any).answer),
+        agentMeta: {
+          toolRounds,
+          footballCallsUsed: quota.used,
+          maxFootballCalls: quota.max,
+        },
+      },
+    );
+    return;
+  }
+
+  await respondAgentWithOptionalPersist(
+    res,
+    {
       success: true,
-      ...(parsed as any),
+      answer: lastAssistantText,
       usedMatchIds,
-      limitations: [...limitations, ...extra],
+      limitations,
+      debug: { reason: 'JSON_PARSE_FAILED' },
       agent: {
         toolRounds,
         footballCallsUsed: quota.used,
         maxFootballCalls: quota.max,
         maxToolRounds: maxRounds,
       },
-    });
-    return;
-  }
-
-  res.status(200).json({
-    success: true,
-    answer: lastAssistantText,
-    usedMatchIds,
-    limitations,
-    debug: { reason: 'JSON_PARSE_FAILED' },
-    agent: {
-      toolRounds,
-      footballCallsUsed: quota.used,
-      maxFootballCalls: quota.max,
-      maxToolRounds: maxRounds,
     },
-  });
+    {
+      persist: args.persistJournal,
+      message: args.message,
+      answer: lastAssistantText,
+      agentMeta: {
+        toolRounds,
+        footballCallsUsed: quota.used,
+        maxFootballCalls: quota.max,
+      },
+    },
+  );
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -395,6 +484,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     typeof body?.topN === 'number' ? body.topN : DEFAULT_TOP_N,
     MIN_TOP_N,
     MAX_TOP_N,
+  );
+
+  const persistJournal = body?.persistJournal !== false;
+  const journalDays = clamp(
+    typeof body?.journalDays === 'number' ? body.journalDays : 10,
+    1,
+    90,
+  );
+  const journalLimit = clamp(
+    typeof body?.journalLimit === 'number' ? body.journalLimit : 40,
+    1,
+    100,
   );
 
   const usePerplexityLegacy = Boolean(body?.usePerplexity);
@@ -453,6 +554,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message,
       minimaxKey,
       canUseKv: canUseKvAgent,
+      persistJournal,
+      journalDays,
+      journalLimit,
     });
   }
 
@@ -528,33 +632,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     includeEvents: false,
   });
 
+  const journalRows = await fetchJournalForPrompt({ days: journalDays, limit: journalLimit });
+  const journalCompact = compactJournalForPrompt(journalRows);
+  const journalSection =
+    journalCompact.length > 0
+      ? `\n历史判断记录（数据库 ai_trade_journal，按时间顺序；outcome 赛后人工或任务更新）：\n${JSON.stringify(journalCompact)}\n`
+      : '';
+
   const limitations: string[] = [];
   let perplexityBackground: string | null = null;
 
-  // 生成 JSON 的系统约束（无论 Minimax 还是 Perplexity）
   const systemPrompt = [
-    '你是“足球数据分析助手”。',
-    '只基于用户提供的 JSON 上下文作答，不要编造上下文中没有的数据或时间点。',
-    'API-Football 的角球数据目前仅提供“角球总数”，不提供“角球发生的具体分钟/时间戳”。',
-    '如果用户的问题需要角球的分钟级概率，请明确说明：由于缺少角球时间戳，无法直接计算，只能给出基于总角球的合理推断与改进建议。',
-    '输出必须是严格 JSON，不要输出 Markdown，也不要输出除 JSON 以外的任何文本。',
-    'JSON 结构：{ "answer": string, "usedMatchIds": number[], "limitations"?: string[] }',
+    '你是足球数据分析助手。',
+    '数据来源：随请求附带的「当前 live 聚合比赛上下文」JSON 由本应用后端生成。优先使用 Vercel KV 中缓存的滚球聚合（若已配置且命中）；否则在本次请求内调用 API-Football 拉取 live 并聚合成摘要；字段含义以 JSON 为准。',
+    'JSON 内 generatedAt 为上下文生成时间；meta.cacheAgeSeconds 为 KV 缓存年龄（秒，仅在 KV 命中时有意义）。',
+    '若消息中出现「Perplexity 补充参考」段落（仅 HYBRID 模式），其来自 Perplexity 检索/归纳，与上述 JSON 中的场次数据来源不同，引用时请区分。',
+    '记忆与复盘：聊天窗口内的多轮对话不会自动传给模型；与你的判断相关的长期记录来自 Supabase 表 ai_trade_journal。若下方附带了「历史判断记录」JSON，请结合它做复盘与对照；本条请求结束后若开启持久化且数据库已配置，将写入新记录便于日后核对赛果与复盘。',
   ].join('\n');
-
-  const userPrompt = [
-    `用户问题：${message}`,
-    '',
-    '当前 live 聚合比赛上下文（JSON，可能包含缺失字段；缺失=无法下结论）：',
-    JSON.stringify(context),
-    '',
-    aiMode === 'HYBRID'
-      ? perplexityBackground
-        ? `Perplexity 背景要点（用于方法论/知识补充，不代表比赛真实数据）：\n${perplexityBackground}`
-        : 'Perplexity 背景要点：未启用或不可用。'
-      : undefined,
-    '',
-    '请给出结论：如果需要“交易/机会”，请结合每场的 killScore、比分、射门/射正/控球、红牌与数据健康描述风险；如果角球分钟级概率无法计算，请按限制规则说明。',
-  ].filter((x) => typeof x === 'string').join('\n');
 
   if (aiMode === 'HYBRID') {
     if (!perplexityKey) {
@@ -566,11 +660,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         messages: [
           {
             role: 'user',
-            content:
-              '你是足球策略知识助手。只给“方法论/背景要点/注意事项”，不要输出最终交易结论。\n' +
-              '已知：API-Football 的角球只提供角球总数，没有分钟级时间戳。\n' +
-              '请基于一般足球统计直觉，给出：如果用户问“某分钟后角球更可能吗/概率怎么估计”，在缺失时间戳时有哪些可行近似方法。\n\n' +
-              `用户问题：${message}`,
+            content: `用户问题：${message}\n\n可作与足球策略、数据解读相关的补充说明。`,
           },
         ],
       });
@@ -587,7 +677,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         );
       }
     }
+  }
 
+  const userPrompt = [
+    `用户问题：${message}`,
+    journalSection,
+    '当前 live 聚合比赛上下文（JSON）：',
+    JSON.stringify(context),
+    '',
+    aiMode === 'HYBRID'
+      ? perplexityBackground
+        ? `Perplexity 补充参考：\n${perplexityBackground}`
+        : 'Perplexity 补充参考：未启用或不可用。'
+      : undefined,
+  ].filter((x) => typeof x === 'string').join('\n');
+
+  if (aiMode === 'HYBRID') {
     const minimaxResp = await callDeepSeekChat({
       apiKey: minimaxKey!,
       messages: [
@@ -623,20 +728,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } else if (limitations.length > 0) {
         (parsed as any).limitations = limitations;
       }
-      return res.status(200).json({
-        success: true,
-        ...(parsed as any),
-        usedMatchIds,
-      });
+      await respondChatWithOptionalPersist(
+        res,
+        {
+          success: true,
+          ...(parsed as any),
+          usedMatchIds,
+        },
+        persistJournal
+          ? {
+              enabled: true,
+              message,
+              answer: String((parsed as any).answer),
+              selected,
+              context,
+              mode: 'HYBRID',
+            }
+          : null,
+      );
+      return;
     }
 
-    return res.status(200).json({
-      success: true,
-      answer: minimaxResp.content,
-      usedMatchIds,
-      debug: { reason: 'JSON_PARSE_FAILED' },
-      limitations: limitations.length > 0 ? limitations : undefined,
-    });
+    await respondChatWithOptionalPersist(
+      res,
+      {
+        success: true,
+        answer: minimaxResp.content,
+        usedMatchIds,
+        debug: { reason: 'JSON_PARSE_FAILED' },
+        limitations: limitations.length > 0 ? limitations : undefined,
+      },
+      persistJournal
+        ? {
+            enabled: true,
+            message,
+            answer: minimaxResp.content,
+            selected,
+            context,
+            mode: 'HYBRID',
+          }
+        : null,
+    );
+    return;
   }
 
   if (aiMode === 'PERPLEXITY') {
@@ -676,20 +809,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } else if (limitations.length > 0) {
         (parsed as any).limitations = limitations;
       }
-      return res.status(200).json({
-        success: true,
-        ...(parsed as any),
-        usedMatchIds,
-      });
+      await respondChatWithOptionalPersist(
+        res,
+        {
+          success: true,
+          ...(parsed as any),
+          usedMatchIds,
+        },
+        persistJournal
+          ? {
+              enabled: true,
+              message,
+              answer: String((parsed as any).answer),
+              selected,
+              context,
+              mode: 'PERPLEXITY',
+            }
+          : null,
+      );
+      return;
     }
 
-    return res.status(200).json({
-      success: true,
-      answer: perplexityResp.content,
-      usedMatchIds,
-      debug: { reason: 'JSON_PARSE_FAILED' },
-      limitations: limitations.length > 0 ? limitations : undefined,
-    });
+    await respondChatWithOptionalPersist(
+      res,
+      {
+        success: true,
+        answer: perplexityResp.content,
+        usedMatchIds,
+        debug: { reason: 'JSON_PARSE_FAILED' },
+        limitations: limitations.length > 0 ? limitations : undefined,
+      },
+      persistJournal
+        ? {
+            enabled: true,
+            message,
+            answer: perplexityResp.content,
+            selected,
+            context,
+            mode: 'PERPLEXITY',
+          }
+        : null,
+    );
+    return;
   }
 
   // MINIMAX 模式：只调用 Minimax
@@ -724,19 +885,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else if (limitations.length > 0) {
       (parsed as any).limitations = limitations;
     }
-    return res.status(200).json({
-      success: true,
-      ...(parsed as any),
-      usedMatchIds,
-    });
+    await respondChatWithOptionalPersist(
+      res,
+      {
+        success: true,
+        ...(parsed as any),
+        usedMatchIds,
+      },
+      persistJournal
+        ? {
+            enabled: true,
+            message,
+            answer: String((parsed as any).answer),
+            selected,
+            context,
+            mode: 'MINIMAX',
+          }
+        : null,
+    );
+    return;
   }
 
-  return res.status(200).json({
-    success: true,
-    answer: minimaxResp.content,
-    usedMatchIds,
-    debug: { reason: 'JSON_PARSE_FAILED' },
-    limitations: limitations.length > 0 ? limitations : undefined,
-  });
+  await respondChatWithOptionalPersist(
+    res,
+    {
+      success: true,
+      answer: minimaxResp.content,
+      usedMatchIds,
+      debug: { reason: 'JSON_PARSE_FAILED' },
+      limitations: limitations.length > 0 ? limitations : undefined,
+    },
+    persistJournal
+      ? {
+          enabled: true,
+          message,
+          answer: minimaxResp.content,
+          selected,
+          context,
+          mode: 'MINIMAX',
+        }
+      : null,
+  );
 }
 
