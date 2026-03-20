@@ -292,12 +292,6 @@ export default function AiChatPage() {
             </label>
           </div>
 
-          <div className="text-xs text-text-secondary">
-            提示：你可以问“基于当前屏幕/Top 10
-            候选，哪个更适合追进球？”或直接问某个联赛/球队。Agent
-            模式下由模型按需拉取数据，耗时与 API 调用次数更高。
-          </div>
-
           <div className="flex items-end gap-2">
             <textarea
               className="flex-1 min-h-[44px] max-h-[140px] bg-bg-component border border-border-default rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-accent-primary resize-none"
@@ -326,6 +320,12 @@ export default function AiChatPage() {
               )}
               发送
             </button>
+          </div>
+
+          <div className="text-xs text-text-secondary">
+            提示：你可以问“基于当前屏幕/Top 10
+            候选，哪个更适合追进球？”或直接问某个联赛/球队。Agent
+            模式下由模型按需拉取数据，耗时与 API 调用次数更高。
           </div>
 
           {usedMatchPills.length > 0 && (
