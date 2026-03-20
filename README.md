@@ -217,6 +217,8 @@ const result = calculateDynamicScoreWithOdds(match, {
 
 **Hobby 套餐 Serverless Functions 上限（12 个）**：本项目 **`api/` 仅保留一个入口** [`api/[...path].ts`](api/[...path].ts)，实现代码在 [`lib/vercel-api/`](lib/vercel-api/)（**不能**放在 `api/` 子目录下，否则每个 `.ts` 都会单独计为一个 Function）。原 `/api/health`、`/api/matches`、`/api/ai/chat`、`/api/football/*` 等 URL **不变**。`/api/test`、`/api/verify-alignment` 仍可通过 `vercel.json` 的 `rewrites` 指向 `tools-bundle` 查询参数。
 
+**前端路由（如 `/ai`、`/match/:id`）**：[`vercel.json`](vercel.json) 中配置了 SPA 回退到 `index.html`（并排除 `/api/*` 与 `/assets/*`）。若直接打开子路径出现 **404**，请确认已部署包含该 rewrite 的版本。
+
 ---
 
 ## 🛠️ 技术栈

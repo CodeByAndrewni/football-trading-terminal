@@ -103,13 +103,14 @@ export function Header({ selectedLeague, onSelectLeague }: HeaderProps) {
                 <span className="text-sm font-medium">回测</span>
               </Link>
 
-              {/* AI 问答入口 */}
+              {/* AI 问答入口（与作战室/复盘台同断点，避免首页自定义顶栏用户找不到入口） */}
               <Link
                 to="/ai"
-                className="hidden md:flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-bg-component border border-border-default text-text-secondary hover:text-text-primary hover:border-accent-primary transition-all"
+                className="hidden sm:flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg bg-bg-component border border-border-default text-text-secondary hover:text-text-primary hover:border-accent-primary transition-all"
+                title="AI 问答 /ai"
               >
                 <Bot className="w-4 h-4" />
-                <span className="text-sm font-medium hidden lg:inline">AI 问答</span>
+                <span className="text-sm font-medium hidden md:inline">AI 问答</span>
               </Link>
 
               {/* 云同步状态 */}

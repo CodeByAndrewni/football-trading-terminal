@@ -9,7 +9,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Volume2, VolumeX, RefreshCw, ChevronDown, ChevronRight, HelpCircle, X,
   Monitor, CornerUpRight, BarChart3, Clock, Radar, Settings, Wifi, WifiOff,
-  Menu, LayoutGrid, LayoutList, ChevronUp, TrendingUp, Target, Zap
+  Menu, LayoutGrid, LayoutList, ChevronUp, TrendingUp, Target, Zap, Bot
 } from 'lucide-react';
 // LeagueSidebar removed per P0 requirements
 import { AdvancedMatchTable } from '../components/home/AdvancedMatchTable';
@@ -644,6 +644,14 @@ export function HomePage() {
           >
             <CornerUpRight className="w-4 h-4" />
             <span>角球</span>
+          </Link>
+          <Link
+            to="/ai"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#888] hover:text-[#c084fc] hover:bg-[#1a1a1a] border border-transparent hover:border-[#a855f7]/35 transition-all"
+            title="Minimax / 赛事上下文 AI 问答"
+          >
+            <Bot className="w-4 h-4" />
+            <span>AI 问答</span>
           </Link>
           <Link
             to="/history"
