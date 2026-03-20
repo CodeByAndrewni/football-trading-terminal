@@ -16,7 +16,7 @@
       "destination": "/api/tools-bundle?__route=verify-alignment"
     },
     {
-      "source": "/((?!api(/|$)|assets(/|$)).*)",
+      "source": "/((?!api\\/.*|assets\\/.*).*)",
       "destination": "/index.html"
     }
   ]
