@@ -5,5 +5,15 @@
       "path": "/api/supabase-heartbeat",
       "schedule": "0 6 * * *"
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/test",
+      "destination": "/api/tools-bundle?__route=test"
+    },
+    {
+      "source": "/api/verify-alignment",
+      "destination": "/api/tools-bundle?__route=verify-alignment"
+    }
   ]
 }

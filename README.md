@@ -215,6 +215,8 @@ const result = calculateDynamicScoreWithOdds(match, {
 4. 添加环境变量 `FOOTBALL_API_KEY`
 5. 点击部署
 
+**Hobby 套餐 Serverless Functions 上限（12 个）**：本项目已将 `/api/football` 下多个端点合并为 **1 个** catch-all 函数，并将 `/api/test` 与 `/api/verify-alignment` 合并为 **`/api/tools-bundle`**（通过 `vercel.json` 的 `rewrites` 保持原 URL 不变），以便在免费套餐内稳定部署。
+
 ---
 
 ## 🛠️ 技术栈
@@ -345,10 +347,20 @@ bun run preview
 | 变量名 | 说明 | 必需 | 默认值 |
 |--------|------|------|--------|
 | `FOOTBALL_API_KEY` | API-Football API Key | 否 | - |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel KV（`GET /api/matches` 写入；`POST /api/ai/chat` 优先读缓存） | 生产建议配置 | - |
 | `MINIMAX_API_KEY` | Minimax 中国站 API Key（AI 问答：`POST /api/ai/chat`） | 是（AI） | - |
 | `MINIMAX_MODEL` | Minimax 文本对话模型名 | 否 | `MiniMax-M2.7` |
+| `MINIMAX_CHAT_COMPLETIONS_URL` | Agent 模式使用的 OpenAI 兼容 Chat Completions 完整 URL（含 `/chat/completions` 路径） | 否 | `https://api.minimaxi.com/v1/chat/completions` |
+| `AI_AGENT_MAX_FOOTBALL_CALLS` | Agent 单次对话内 API-Football 调用上限（工具白名单内） | 否 | `20` |
+| `AI_AGENT_MAX_TOOL_ROUNDS` | Agent 模型↔工具 最大往返轮次 | 否 | `4` |
 | `PERPLEXITY_API_KEY` | Perplexity API Key（可选） | 否 | - |
 | `PERPLEXITY_MODEL` | Perplexity sonar 模型名（可选） | 否 | `sonar-pro` |
+
+**AI 模式说明**
+
+- **默认（非 Agent）**：服务端先读 KV，否则回退拉取少量 live 并聚合，再调用模型（单次上下文）。
+- **Agent（`agent: true` + `mode: MINIMAX`）**：使用 Chat Completions + `tools`，由模型多轮调用 `kv_list_live_matches`、`apifootball_get_fixtures` / `statistics` / `events`，受 `AI_AGENT_*` 限制。**HYBRID / PERPLEXITY 与 Agent 互斥**（需先选 MINIMAX）。
+- **Vercel Hobby**：Serverless 函数数量有上限；Agent 多轮请求更易触及 **执行时间** 上限，若超时请降低 `AI_AGENT_MAX_TOOL_ROUNDS` 或升级套餐并配置更长 `maxDuration`（见 Vercel 文档）。
 
 **获取 API Key**: [https://www.api-football.com/](https://www.api-football.com/)
 

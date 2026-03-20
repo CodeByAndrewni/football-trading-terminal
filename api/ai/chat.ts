@@ -2,8 +2,20 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getMatches } from '../lib/kv.js';
 import { buildMatchContext } from '../../src/services/aiContext.js';
 import type { AdvancedMatch } from '../../src/data/advancedMockData';
+import { aggregateMatches, calculateBasicKillScore } from '../lib/aggregator.js';
+import { getLiveFixtures, getStatisticsBatch, getEventsBatch } from '../lib/api-football.js';
+import {
+  AI_AGENT_TOOLS,
+  createFootballQuota,
+  executeAgentTool,
+  getDefaultMaxFootballCalls,
+  getDefaultMaxToolRounds,
+} from '../lib/ai-tool-executor.js';
 
 const MINIMAX_CHAT_ENDPOINT = 'https://api.minimaxi.com/v1/text/chatcompletion_v2';
+/** OpenAI 兼容 Chat Completions（支持 tools / tool_calls），用于 Agent 模式 */
+const MINIMAX_OPENAI_CHAT =
+  process.env.MINIMAX_CHAT_COMPLETIONS_URL ?? 'https://api.minimaxi.com/v1/chat/completions';
 const PERPLEXITY_SONAR_ENDPOINT = 'https://api.perplexity.ai/v1/sonar';
 
 const DEFAULT_TOP_N = 10;
@@ -11,6 +23,22 @@ const MIN_TOP_N = 3;
 const MAX_TOP_N = 15;
 
 type DeepSeekChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+
+type OpenAiToolCall = {
+  id: string;
+  type: string;
+  function: { name: string; arguments: string };
+};
+
+type AgentChatMessage =
+  | { role: 'system'; content: string }
+  | { role: 'user'; content: string }
+  | {
+      role: 'assistant';
+      content: string | null;
+      tool_calls?: OpenAiToolCall[];
+    }
+  | { role: 'tool'; tool_call_id: string; content: string };
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -27,6 +55,60 @@ function extractJsonObject(text: string): unknown | null {
     return JSON.parse(candidate);
   } catch {
     return null;
+  }
+}
+
+async function callMinimaxOpenAIChat(args: {
+  apiKey: string;
+  model?: string;
+  messages: AgentChatMessage[];
+  tools?: typeof AI_AGENT_TOOLS;
+  temperature?: number;
+  timeoutMs?: number;
+  maxTokens?: number;
+}): Promise<
+  | { ok: true; message: Record<string, unknown> }
+  | { ok: false; status: number; error: unknown }
+> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 60000);
+
+  try {
+    const body: Record<string, unknown> = {
+      model: args.model ?? process.env.MINIMAX_MODEL ?? 'MiniMax-M2.7',
+      messages: args.messages,
+      temperature: typeof args.temperature === 'number' ? args.temperature : 0.6,
+      max_tokens: args.maxTokens ?? 2048,
+      stream: false,
+    };
+    if (args.tools && args.tools.length > 0) {
+      body.tools = args.tools;
+      body.tool_choice = 'auto';
+    }
+
+    const resp = await fetch(MINIMAX_OPENAI_CHAT, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${args.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return { ok: false as const, status: resp.status, error: json };
+    }
+
+    const message = json?.choices?.[0]?.message;
+    if (!message || typeof message !== 'object') {
+      return { ok: false as const, status: resp.status, error: { reason: 'NO_MESSAGE', json } };
+    }
+
+    return { ok: true as const, message: message as Record<string, unknown> };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -116,6 +198,187 @@ async function callPerplexitySonar(args: {
   }
 }
 
+async function fetchLiveMatchesForAi(params: { candidateCount: number }) {
+  // 本地回退：不依赖 KV，直接从 API-Football 拉取少量 live fixtures
+  // 注意：这会消耗 API-Football 查询额度，因此 candidateCount 需要控制。
+  const fixtures = await getLiveFixtures();
+  const sortedFixtures = [...fixtures].sort((a, b) => {
+    const am = a.fixture?.status?.elapsed ?? 0;
+    const bm = b.fixture?.status?.elapsed ?? 0;
+    return bm - am;
+  });
+
+  const candidates = sortedFixtures.slice(0, params.candidateCount);
+  const fixtureIds = candidates.map((f) => f.fixture.id);
+
+  if (fixtureIds.length === 0) return [];
+
+  const statisticsMap = await getStatisticsBatch(fixtureIds, {
+    batchSize: 10,
+    batchDelay: 0,
+  });
+
+  const eventsMap = await getEventsBatch(fixtureIds, {
+    batchSize: 10,
+    batchDelay: 0,
+  });
+
+  // 为了省额度：本地 AI 回退默认不拉赔率
+  const liveOddsMap = new Map<number, any[]>();
+  const prematchOddsMap = new Map<number, any[]>();
+
+  const matches = aggregateMatches(candidates as any, statisticsMap as any, eventsMap as any, liveOddsMap as any, prematchOddsMap as any) as any as AdvancedMatch[];
+
+  for (const m of matches) {
+    (m as any).killScore = calculateBasicKillScore(m as any);
+  }
+
+  matches.sort((a: any, b: any) => (b.killScore ?? 0) - (a.killScore ?? 0));
+  return matches;
+}
+
+async function runAgentChat(
+  res: VercelResponse,
+  args: {
+    message: string;
+    minimaxKey: string;
+    canUseKv: boolean;
+  },
+): Promise<void> {
+  const quota = createFootballQuota(getDefaultMaxFootballCalls());
+  const maxRounds = getDefaultMaxToolRounds();
+  let toolRounds = 0;
+
+  const systemPrompt = [
+    '你是足球数据分析助手。你可以调用工具读取 KV 缓存或 API-Football 端点。',
+    '先按需要调用工具获取数据，再给出结论。',
+    '不要编造工具未返回的数据或时间点。',
+    'API-Football 的角球数据通常只有角球总数，没有角球发生的具体分钟/时间戳。',
+    '若无法从工具得到数据，请说明原因。',
+    '最终回答必须是严格 JSON（不要 Markdown），不要输出 JSON 以外的文本。',
+    'JSON 结构：{ "answer": string, "usedMatchIds": number[], "limitations"?: string[] }',
+  ].join('\n');
+
+  const messages: AgentChatMessage[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: args.message },
+  ];
+
+  let lastAssistantText: string | null = null;
+
+  for (let round = 0; round < maxRounds; round++) {
+    const resp = await callMinimaxOpenAIChat({
+      apiKey: args.minimaxKey,
+      model: process.env.MINIMAX_MODEL ?? 'MiniMax-M2.7',
+      messages,
+      tools: AI_AGENT_TOOLS,
+      maxTokens: 2048,
+      timeoutMs: 90000,
+    });
+
+    if (!resp.ok) {
+      res.status(200).json({
+        success: true,
+        answer:
+          'Agent 模型调用失败（OpenAI Chat Completions）。请检查 MINIMAX_CHAT_COMPLETIONS_URL、MINIMAX_MODEL 与 MINIMAX_API_KEY。',
+        usedMatchIds: [],
+        debug: { reason: 'AGENT_MINIMAX_CALL_FAILED', status: resp.status, details: resp.error },
+        limitations: [`本请求已消耗 API-Football 调用：${quota.used}/${quota.max}`],
+        agent: { toolRounds, footballCallsUsed: quota.used, maxFootballCalls: quota.max },
+      });
+      return;
+    }
+
+    const msg = resp.message;
+    const toolCalls = msg.tool_calls as OpenAiToolCall[] | undefined;
+
+    if (!toolCalls || !Array.isArray(toolCalls) || toolCalls.length === 0) {
+      lastAssistantText = typeof msg.content === 'string' ? msg.content : '';
+      break;
+    }
+
+    messages.push({
+      role: 'assistant',
+      content: typeof msg.content === 'string' ? msg.content : null,
+      tool_calls: toolCalls,
+    });
+
+    for (const tc of toolCalls) {
+      if (!tc?.id || !tc.function?.name) continue;
+      const execResult = await executeAgentTool({
+        name: tc.function.name,
+        argumentsJson: tc.function.arguments ?? '{}',
+        quota,
+        canUseKv: args.canUseKv,
+      });
+      messages.push({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: execResult.content,
+      });
+    }
+
+    toolRounds++;
+  }
+
+  const limitations: string[] = [`本请求 API-Football 调用次数：${quota.used}/${quota.max}`];
+
+  if (!lastAssistantText) {
+    res.status(200).json({
+      success: true,
+      answer:
+        '未在允许轮次内得到最终文本回答（可能仍在工具循环中）。可缩小问题或提高 AI_AGENT_MAX_TOOL_ROUNDS。',
+      usedMatchIds: [],
+      limitations,
+      debug: { reason: 'AGENT_NO_FINAL_MESSAGE' },
+      agent: {
+        toolRounds,
+        footballCallsUsed: quota.used,
+        maxFootballCalls: quota.max,
+        maxToolRounds: maxRounds,
+      },
+    });
+    return;
+  }
+
+  const parsed = extractJsonObject(lastAssistantText);
+  const usedMatchIds =
+    parsed && typeof parsed === 'object' && (parsed as any).usedMatchIds
+      ? (parsed as any).usedMatchIds
+      : [];
+
+  if (parsed && typeof parsed === 'object' && (parsed as any).answer) {
+    const extra = Array.isArray((parsed as any).limitations) ? (parsed as any).limitations : [];
+    res.status(200).json({
+      success: true,
+      ...(parsed as any),
+      usedMatchIds,
+      limitations: [...limitations, ...extra],
+      agent: {
+        toolRounds,
+        footballCallsUsed: quota.used,
+        maxFootballCalls: quota.max,
+        maxToolRounds: maxRounds,
+      },
+    });
+    return;
+  }
+
+  res.status(200).json({
+    success: true,
+    answer: lastAssistantText,
+    usedMatchIds,
+    limitations,
+    debug: { reason: 'JSON_PARSE_FAILED' },
+    agent: {
+      toolRounds,
+      footballCallsUsed: quota.used,
+      maxFootballCalls: quota.max,
+      maxToolRounds: maxRounds,
+    },
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -158,6 +421,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const minimaxKey = process.env.MINIMAX_API_KEY;
   const perplexityKey = process.env.PERPLEXITY_API_KEY;
 
+  const useAgent =
+    body?.agent === true ||
+    (typeof body?.chatMode === 'string' && body.chatMode.toUpperCase() === 'AGENT');
+
+  if (useAgent) {
+    if (aiMode !== 'MINIMAX') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'AGENT_MODE_REQUIRES_MINIMAX',
+          message:
+            'Agent 模式仅支持 MINIMAX（多轮工具调用）。请改用 MINIMAX 或关闭 Agent。',
+        },
+      });
+    }
+    if (!minimaxKey) {
+      return res.status(500).json({
+        success: false,
+        error: { code: 'MINIMAX_API_KEY_NOT_CONFIGURED', message: 'Missing MINIMAX_API_KEY' },
+      });
+    }
+    const canUseKvAgent =
+      typeof process.env.KV_REST_API_URL === 'string' &&
+      process.env.KV_REST_API_URL.length > 0 &&
+      typeof process.env.KV_REST_API_TOKEN === 'string' &&
+      process.env.KV_REST_API_TOKEN.length > 0;
+
+    return runAgentChat(res, {
+      message,
+      minimaxKey,
+      canUseKv: canUseKvAgent,
+    });
+  }
+
   if (aiMode !== 'PERPLEXITY' && !minimaxKey) {
     return res.status(500).json({
       success: false,
@@ -172,25 +469,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const kvResult = await getMatches();
-  if (!kvResult || !Array.isArray(kvResult.matches) || kvResult.matches.length === 0) {
-    return res.status(200).json({
-      success: true,
-      answer: '当前没有可用的 live 聚合比赛数据，请稍后再试。',
-      usedMatchIds: [],
-      debug: { reason: 'NO_KV_MATCHES' },
-    });
+  let matches: AdvancedMatch[] = [];
+  let cacheAgeSeconds: number | null = null;
+  let apiFootballError: string | null = null;
+
+  // 1) 优先尝试 KV（生产/已部署时）
+  const canUseKv =
+    typeof process.env.KV_REST_API_URL === 'string' &&
+    process.env.KV_REST_API_URL.length > 0 &&
+    typeof process.env.KV_REST_API_TOKEN === 'string' &&
+    process.env.KV_REST_API_TOKEN.length > 0;
+
+  if (canUseKv) {
+    const kvResult = await getMatches();
+    if (kvResult && Array.isArray(kvResult.matches) && kvResult.matches.length > 0) {
+      cacheAgeSeconds = kvResult.cacheAge;
+      matches = kvResult.matches
+        .filter((m: unknown): m is AdvancedMatch => !!m && typeof (m as any).id === 'number')
+        .sort((a, b) => (Number((b as any).killScore) || 0) - (Number((a as any).killScore) || 0));
+    }
   }
 
-  const matches = kvResult.matches
-    .filter((m: unknown): m is AdvancedMatch => !!m && typeof (m as any).id === 'number')
-    .sort((a, b) => (Number((b as any).killScore) || 0) - (Number((a as any).killScore) || 0));
+  if (matches.length === 0) {
+    // 2) 回退：本地不依赖 KV，直接拉取少量 live fixtures 聚合（消耗 API-Football 配额）
+    try {
+      matches = await fetchLiveMatchesForAi({ candidateCount: Math.max(topN, 12) });
+    } catch (e) {
+      apiFootballError = e instanceof Error ? e.message : String(e);
+      matches = [];
+    }
+  }
+
+  if (matches.length === 0) {
+    const limitations: string[] = [];
+    if (apiFootballError) {
+      // 常见：403 Forbidden
+      limitations.push(`API-Football 拉取失败：${apiFootballError}`);
+    } else {
+      limitations.push('当前无法获取 live 比赛上下文（KV 与本地回退均失败）。');
+    }
+
+    return res.status(200).json({
+      success: true,
+      answer:
+        '当前无法获取 live 比赛数据，因此无法基于真实数据给出交易/概率结论。\n\n请先检查 `FOOTBALL_API_KEY` 的权限/套餐/IP 风控是否正常（你当前环境里通常表现为 403 Forbidden）。',
+      usedMatchIds: [],
+      limitations,
+      debug: { reason: 'NO_MATCH_CONTEXT' },
+    });
+  }
 
   const selected = matches.slice(0, topN);
 
   // 构建上下文时默认不塞完整 events，避免 token 爆炸。
   const context = buildMatchContext(selected, topN, {
-    cacheAgeSeconds: kvResult.cacheAge,
+    cacheAgeSeconds,
     includeEvents: false,
   });
 

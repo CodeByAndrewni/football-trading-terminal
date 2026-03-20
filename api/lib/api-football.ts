@@ -124,6 +124,7 @@ async function fetchAPI<T>(
     throw new Error('FOOTBALL_API_KEY not configured');
   }
 
+
   const url = new URL(`${API_BASE_URL}${endpoint}`);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.append(key, value);
@@ -160,6 +161,14 @@ async function fetchAPI<T>(
  */
 export async function getLiveFixtures(): Promise<Match[]> {
   return fetchAPI<Match[]>('/fixtures', { live: 'all' });
+}
+
+/**
+ * 通用 /fixtures 查询（每次调用计 1 次 API-Football 请求）
+ * 例如：{ live: 'all' } | { id: '123' } | { league, season, date }
+ */
+export async function getFixturesQuery(params: Record<string, string>): Promise<Match[]> {
+  return fetchAPI<Match[]>('/fixtures', params);
 }
 
 /**

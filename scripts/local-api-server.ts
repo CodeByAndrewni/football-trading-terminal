@@ -6,13 +6,42 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import fs from 'node:fs';
+import path from 'node:path';
 
-// 导入 API 端点
-import fixturesHandler from '../api/football/fixtures';
-import oddsHandler from '../api/football/odds';
-import statsHandler from '../api/football/stats';
-import standingsHandler from '../api/football/standings';
+// ---------------------------------------------------------------------------
+// 本地模式下：bun 默认不会自动读取项目根目录的 `.env`。
+// 为了让 `FOOTBALL_API_KEY / MINIMAX_API_KEY / PERPLEXITY_API_KEY` 等
+// 在本地 `bun run api:dev` 下也能生效，这里做一个极简 `.env` 解析器。
+// ---------------------------------------------------------------------------
+function loadLocalDotEnv() {
+  try {
+    const envPath = path.join(process.cwd(), '.env');
+    if (!fs.existsSync(envPath)) return;
+    const raw = fs.readFileSync(envPath, 'utf8');
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const value = trimmed.slice(eq + 1).trim();
+      if (!process.env[key]) {
+        process.env[key] = value;
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
+loadLocalDotEnv();
+
+// 导入 API 端点（football 已合并为单 catch-all）
+import routeFootballApi from '../api/lib/football-catchall';
+import toolsBundleHandler from '../api/tools-bundle';
 import aiChatHandler from '../api/ai/chat';
+import matchesHandler from '../api/matches/index';
 
 const PORT = typeof process.env.PORT === 'string'
   ? Number(process.env.PORT)
@@ -47,11 +76,15 @@ function createMockResponse(): VercelResponse {
 
 // 路由处理
 const routes: Record<string, (req: VercelRequest, res: VercelResponse) => Promise<any>> = {
-  '/api/football/fixtures': fixturesHandler,
-  '/api/football/odds': oddsHandler,
-  '/api/football/stats': statsHandler,
-  '/api/football/standings': standingsHandler,
+  '/api/football/fixtures': routeFootballApi,
+  '/api/football/odds': routeFootballApi,
+  '/api/football/stats': routeFootballApi,
+  '/api/football/standings': routeFootballApi,
+  '/api/test': toolsBundleHandler,
+  '/api/verify-alignment': toolsBundleHandler,
+  '/api/tools-bundle': toolsBundleHandler,
   '/api/ai/chat': aiChatHandler,
+  '/api/matches': matchesHandler,
 };
 
 // HTTP 服务器
