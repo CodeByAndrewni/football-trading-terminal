@@ -12,7 +12,11 @@ import routeFootballApi from '../lib/vercel-api/football-catchall.js';
 import toolsBundleRoute from '../lib/vercel-api/tools-bundle-route.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+  const rawPathname = new URL(req.url || '/', 'http://localhost').pathname;
+  const pathname =
+    rawPathname.length > 1 && rawPathname.endsWith('/')
+      ? rawPathname.slice(0, -1)
+      : rawPathname;
 
   if (pathname === '/api/health') {
     return healthRoute(req, res);
