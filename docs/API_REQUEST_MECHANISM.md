@@ -103,7 +103,7 @@ useMatchStatistics({
 
 ### 后端缓存 (Vercel KV)
 
-**配置文件**: `api/matches/index.ts`
+**配置文件**: `lib/vercel-api/matches-route.ts`
 
 ```typescript
 const CONFIG = {
@@ -143,7 +143,7 @@ const CONFIG = {
 
 ### 问题2: Live Odds 不跟随比分
 
-**当前逻辑** (`api/lib/aggregator.ts`):
+**当前逻辑** (`lib/vercel-api/aggregator.ts`):
 
 ```typescript
 // ❌ 问题: 没有验证赔率是否匹配当前比分
@@ -172,7 +172,7 @@ function parseLiveOdds(liveOdds: LiveOddsData[]): OddsInfo {
 
 2. **回退到 Prematch Odds**: 当 Live Odds 获取失败时
    ```typescript
-   // api/lib/aggregator.ts Line 926
+   // lib/vercel-api/aggregator.ts Line 926
    let odds = parseLiveOdds(liveOdds);
    if (!odds) {
      odds = parsePrematchOdds(prematchOdds);  // ⚠️ 回退到赛前赔率！
@@ -200,7 +200,7 @@ function parseLiveOdds(liveOdds: LiveOddsData[]): OddsInfo {
 
 ### 方案1: 减少缓存时间（立即实施）✅
 
-**修改**: `api/matches/index.ts`
+**修改**: `lib/vercel-api/matches-route.ts`
 
 ```typescript
 const CONFIG = {
@@ -219,7 +219,7 @@ const CONFIG = {
 
 ### 方案2: 智能赔率验证（今天实施）✅
 
-**新增**: `api/lib/aggregator.ts` 增强 `parseLiveOdds`
+**新增**: `lib/vercel-api/aggregator.ts` 增强 `parseLiveOdds`
 
 ```typescript
 function parseLiveOdds(
@@ -377,7 +377,7 @@ function OddsDisplay({ match }: { match: AdvancedMatch }) {
 
 ---
 
-**下一步**: 立即开始修复 `api/matches/index.ts` 和 `api/lib/aggregator.ts`
+**下一步**: 立即开始修复 `lib/vercel-api/matches-route.ts` 和 `lib/vercel-api/aggregator.ts`
 
 **预期修复时间**: 1-2 小时
 **验证时间**: 找一场进行中的高比分比赛测试

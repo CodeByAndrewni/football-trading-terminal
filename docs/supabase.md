@@ -44,7 +44,7 @@
   - 作用：仅在服务端使用的最高权限密钥，供：
     - `scripts/ingest/*.ts` 仓库构建脚本
     - `scripts/sync_teams.ts` 同步 Teams 维表
-    - `api/supabase-heartbeat.ts` 心跳 API
+    - `lib/vercel-api/supabase-heartbeat-route.ts`（经 `api/[...path].ts` 暴露 `GET /api/supabase-heartbeat`）心跳 API
     - 未来需要 service_role 能力的 server-only 逻辑
 
 ### 2.3 兼容的旧变量（不再推荐，但仍会被代码读取）

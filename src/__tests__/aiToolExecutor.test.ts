@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFootballQuota } from '../../api/lib/ai-tool-executor';
+import { createFootballQuota } from '../../lib/vercel-api/ai-tool-executor';
 
 describe('createFootballQuota', () => {
   it('stops after max calls', () => {

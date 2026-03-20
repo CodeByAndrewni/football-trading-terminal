@@ -68,12 +68,14 @@
 - ❌ 未配置 API 代理规则
 - ℹ️  依赖 `/api` 目录下的 Serverless Functions
 
+> **架构说明（Hobby 套餐）**：Vercel 将 `api/` 下**每个**路由 `.ts` 计为一个 Serverless Function（上限 12）。本项目**仅保留** [`api/[...path].ts`](../api/[...path].ts) 作为统一入口，业务实现放在 [`lib/vercel-api/`](../lib/vercel-api/)，对外 URL（如 `GET /api/matches`）不变。
+
 ---
 
 ### 2️⃣  Serverless Functions (Vercel Edge)
 
 #### 主聚合端点 ✅
-**文件**: `api/matches/index.ts`
+**文件**: `lib/vercel-api/matches-route.ts`
 **路由**: `GET /api/matches`
 **运行时**: Vercel Serverless Functions (Node.js)
 
@@ -107,7 +109,7 @@
 
 #### 核心库文件
 
-##### `api/lib/api-football.ts` ✅
+##### `lib/vercel-api/api-football.ts` ✅
 **功能**: API-Football SDK（后端版本）
 - ✅ 8个导出函数
 - ✅ 批量处理支持
@@ -125,7 +127,7 @@
 - `getLiveOddsBatch(ids[])` - 批量滚球赔率
 - `getPrematchOddsBatch(ids[])` - 批量赛前赔率
 
-##### `api/lib/aggregator.ts` ✅
+##### `lib/vercel-api/aggregator.ts` ✅
 **功能**: 数据聚合器（1015行）
 - ✅ 统一数据格式转换
 - ✅ 多源数据整合
@@ -140,7 +142,7 @@
 - 失衡指标（imbalance metrics）
 - 事件数据（goals、cards、subs）
 
-##### `api/lib/kv.ts` ✅
+##### `lib/vercel-api/kv.ts` ✅
 **功能**: KV 存储抽象层
 - ✅ Vercel KV 集成
 - ✅ 缓存管理
@@ -244,7 +246,7 @@ Vercel (后端)
 
 ### Vercel 部署
 - [x] vercel.json 配置文件
-- [x] api/matches/index.ts 端点
+- [x] lib/vercel-api/matches-route.ts 端点
 - [ ] 连接 GitHub 仓库
 - [ ] 配置环境变量
   - [ ] FOOTBALL_API_KEY
@@ -296,14 +298,14 @@ Vercel (后端)
 - `.env` - 环境变量（2个 API Key）
 
 ### API 端点
-- `api/matches/index.ts` - 主聚合端点（295行）
-- `api/health.ts` - 健康检查端点
-- `api/verify-alignment.ts` - 数据对齐验证
+- `lib/vercel-api/matches-route.ts` - 主聚合端点（295行）
+- `lib/vercel-api/health-route.ts` - 健康检查（路由 `GET /api/health`）
+- `lib/vercel-api/verify-alignment-handler.ts` - 数据对齐验证（经 `tools-bundle` / `api/[...path].ts`）
 
 ### 核心库
-- `api/lib/api-football.ts` - API Football SDK（355行）
-- `api/lib/aggregator.ts` - 数据聚合器（1015行）
-- `api/lib/kv.ts` - KV 存储抽象
+- `lib/vercel-api/api-football.ts` - API Football SDK（355行）
+- `lib/vercel-api/aggregator.ts` - 数据聚合器（1015行）
+- `lib/vercel-api/kv.ts` - KV 存储抽象
 
 ### 前端 SDK
 - `src/services/apiFootballSDK.ts` - 完整 SDK（140+ 函数）

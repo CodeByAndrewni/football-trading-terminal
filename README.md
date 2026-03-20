@@ -215,7 +215,7 @@ const result = calculateDynamicScoreWithOdds(match, {
 4. 添加环境变量 `FOOTBALL_API_KEY`
 5. 点击部署
 
-**Hobby 套餐 Serverless Functions 上限（12 个）**：本项目 **`api/` 仅保留一个入口** [`api/[...path].ts`](api/[...path].ts)，在函数内按路径分发到 `api/lib/*`（原 `/api/health`、`/api/matches`、`/api/ai/chat`、`/api/football/*` 等 URL **不变**）。`/api/test`、`/api/verify-alignment` 仍可通过 `vercel.json` 的 `rewrites` 指向 `tools-bundle` 查询参数。
+**Hobby 套餐 Serverless Functions 上限（12 个）**：本项目 **`api/` 仅保留一个入口** [`api/[...path].ts`](api/[...path].ts)，实现代码在 [`lib/vercel-api/`](lib/vercel-api/)（**不能**放在 `api/` 子目录下，否则每个 `.ts` 都会单独计为一个 Function）。原 `/api/health`、`/api/matches`、`/api/ai/chat`、`/api/football/*` 等 URL **不变**。`/api/test`、`/api/verify-alignment` 仍可通过 `vercel.json` 的 `rewrites` 指向 `tools-bundle` 查询参数。
 
 ---
 

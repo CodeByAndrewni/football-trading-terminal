@@ -56,7 +56,7 @@
 
 ### 问题2: 当前代码的错误假设
 
-**错误位置**: `api/lib/aggregator.ts` Line 553-612
+**错误位置**: `lib/vercel-api/aggregator.ts` Line 553-612
 
 ```typescript
 // ❌ 当前逻辑问题
@@ -76,7 +76,7 @@ const ouMarket = data.odds.find(o =>
 
 **缓存策略问题**:
 ```typescript
-// api/matches/index.ts
+// lib/vercel-api/matches-route.ts
 const CONFIG = {
   CACHE_TTL: 60,  // ❌ 60秒缓存太长！
   // 问题: 比赛可能在60秒内进3球，但用户看到的是旧赔率
@@ -96,7 +96,7 @@ const CONFIG = {
 
 ### 方案1: 增强 Live Odds 解析（立即修复）
 
-**文件**: `api/lib/aggregator.ts`
+**文件**: `lib/vercel-api/aggregator.ts`
 
 ```typescript
 // ✅ 修复后的 parseLiveOdds 函数
@@ -161,7 +161,7 @@ function parseLiveOdds(
 
 ### 方案2: 修复赛前赔率解析
 
-**文件**: `api/lib/aggregator.ts`
+**文件**: `lib/vercel-api/aggregator.ts`
 
 ```typescript
 // ✅ 修复 parsePrematchOdds 函数
@@ -238,7 +238,7 @@ function parsePrematchOdds(prematchOdds: OddsData[] | undefined): OddsInfo | nul
 
 ### 方案3: 减少缓存时间
 
-**文件**: `api/matches/index.ts`
+**文件**: `lib/vercel-api/matches-route.ts`
 
 ```typescript
 const CONFIG = {
@@ -251,7 +251,7 @@ const CONFIG = {
 
 ### 方案4: 添加数据验证中间件
 
-**新建文件**: `api/lib/odds-validator.ts`
+**新建文件**: `lib/vercel-api/odds-validator.ts`
 
 ```typescript
 /**
@@ -385,15 +385,15 @@ const liveOdds = {
 
 | 文件 | 需要修改 | 优先级 |
 |------|---------|--------|
-| `api/lib/aggregator.ts` | ✅ 是 | 🔥 最高 |
-| `api/matches/index.ts` | ✅ 是 | 🔥 最高 |
-| `api/lib/odds-validator.ts` | ✅ 新建 | ⭐ 高 |
+| `lib/vercel-api/aggregator.ts` | ✅ 是 | 🔥 最高 |
+| `lib/vercel-api/matches-route.ts` | ✅ 是 | 🔥 最高 |
+| `lib/vercel-api/odds-validator.ts` | ✅ 新建 | ⭐ 高 |
 | `src/services/oddsService.ts` | ⚠️ 检查 | ⭐ 高 |
 | `src/services/apiConverter.ts` | ⚠️ 检查 | ⭐ 中 |
 
 ---
 
-**下一步**: 立即开始修复 `api/lib/aggregator.ts` 中的 `parseLiveOdds` 函数
+**下一步**: 立即开始修复 `lib/vercel-api/aggregator.ts` 中的 `parseLiveOdds` 函数
 
 **预期效果**:
 - ✅ Live Odds 准确反映当前比分

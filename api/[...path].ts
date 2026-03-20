@@ -1,14 +1,15 @@
 /**
- * Hobby 套餐：仅 **1** 个 Serverless Function 入口，按路径分发到 api/lib/* 实现。
- * 原 URL 保持不变：/api/health、/api/matches、/api/ai/chat、/api/football/* 等。
+ * Hobby 套餐：仅 **1** 个 Serverless Function 入口，按路径分发到 lib/vercel-api/ 实现。
+ * （实现代码必须放在 api/ 外，否则 Vercel 会把 api 下每个 .ts 都计为一个 Function。）
+ * 原 URL 保持不变：/api/health、/api/matches、/api/ai/chat、/api/football/… 等。
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import aiChatRoute from './lib/ai-chat-route.js';
-import matchesRoute from './lib/matches-route.js';
-import healthRoute from './lib/health-route.js';
-import supabaseHeartbeatRoute from './lib/supabase-heartbeat-route.js';
-import routeFootballApi from './lib/football-catchall.js';
-import toolsBundleRoute from './lib/tools-bundle-route.js';
+import aiChatRoute from '../lib/vercel-api/ai-chat-route.js';
+import matchesRoute from '../lib/vercel-api/matches-route.js';
+import healthRoute from '../lib/vercel-api/health-route.js';
+import supabaseHeartbeatRoute from '../lib/vercel-api/supabase-heartbeat-route.js';
+import routeFootballApi from '../lib/vercel-api/football-catchall.js';
+import toolsBundleRoute from '../lib/vercel-api/tools-bundle-route.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pathname = new URL(req.url || '/', 'http://localhost').pathname;

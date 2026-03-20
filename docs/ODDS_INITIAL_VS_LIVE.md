@@ -13,7 +13,7 @@
 
 ### 二、聚合层 `/api/matches` 字段来源
 
-- 文件：`api/lib/aggregator.ts`
+- 文件：`lib/vercel-api/aggregator.ts`
 - 类型：`AdvancedMatch`（聚合端）
 
 #### 1. 当前盘口（动态）

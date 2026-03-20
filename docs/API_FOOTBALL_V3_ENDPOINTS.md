@@ -246,4 +246,4 @@ interface LiveFixtureResponse {
 
 - [API-Football 官方文档](https://www.api-football.com/documentation-v3)
 - [本项目类型定义](../src/types/index.ts)
-- [数据聚合器](../api/lib/aggregator.ts)
+- [数据聚合器](../lib/vercel-api/aggregator.ts)

@@ -5,7 +5,7 @@
 - `src/services/standingsService.ts`
 - `src/services/apiFootballSDK.ts`
 - `src/services/oddsBatchOptimizer.ts`
-- `api/matches/index.ts`
+- `lib/vercel-api/matches-route.ts`
 - `src/config/constants.ts`
 - `src/services/api.ts`
 - `src/hooks/useMatches.ts`（仅确认逻辑，未在本轮进一步修改 liveMatches 计算）
@@ -126,7 +126,7 @@
 
 ### 3. Live Fixtures + Live Odds（API-Football 调用频率）
 
-**相关文件**：`src/services/oddsBatchOptimizer.ts`、`api/matches/index.ts`、`src/services/apiFootballSDK.ts`
+**相关文件**：`src/services/oddsBatchOptimizer.ts`、`lib/vercel-api/matches-route.ts`、`src/services/apiFootballSDK.ts`
 
 - **SDK 级别**：在 `apiFootballSDK.ts` 中：
   - `CACHE_TTL.LIVE_FIXTURES = 10 * 1000`（10 秒）
@@ -141,7 +141,7 @@
     - 多个并发调用共享 `pendingRequests`，避免同一 fixture 重复请求。
 
 - **聚合 API `/api/matches` 层**：
-  - 在 `api/matches/index.ts` 中，将配置改为：
+  - 在 `lib/vercel-api/matches-route.ts` 中，将配置改为：
 
     ```ts
     const CONFIG = {
@@ -350,7 +350,7 @@
 ## 七、不破坏现有悬浮窗和 UI 结构的保证
 
 - 所有更改都集中在：
-  - **服务层 / 缓存层**：`api.ts`、`standingsService.ts`、`apiFootballSDK.ts`、`oddsBatchOptimizer.ts`、`api/matches/index.ts`；
+  - **服务层 / 缓存层**：`api.ts`、`standingsService.ts`、`apiFootballSDK.ts`、`oddsBatchOptimizer.ts`、`lib/vercel-api/matches-route.ts`；
   - **Hook 层**：`useLiveMatchesAdvanced` 的返回结构保持 `{ ...query, liveMatches }` 不变；
   - **UI 层**：`HomePage` 仅在内部对结束状态做过滤，不改变 `MatchTableV2`、悬浮窗组件的 props 结构；
   - **赔率结构**：`AdvancedMatch.odds` 的字段命名和结构未改动，只在源选择和缓存策略上做了加强。
