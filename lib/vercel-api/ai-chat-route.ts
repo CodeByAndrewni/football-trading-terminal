@@ -19,10 +19,8 @@ import {
   getDefaultMaxToolRounds,
 } from './ai-tool-executor.js';
 
-const MINIMAX_CHAT_ENDPOINT = 'https://api.minimaxi.com/v1/text/chatcompletion_v2';
-/** OpenAI 兼容 Chat Completions（支持 tools / tool_calls），用于 Agent 模式 */
-const MINIMAX_OPENAI_CHAT =
-  process.env.MINIMAX_CHAT_COMPLETIONS_URL ?? 'https://api.minimaxi.com/v1/chat/completions';
+const DEEPSEEK_CHAT_ENDPOINT =
+  process.env.DEEPSEEK_CHAT_URL ?? 'https://api.deepseek.com/chat/completions';
 const PERPLEXITY_SONAR_ENDPOINT = 'https://api.perplexity.ai/v1/sonar';
 
 const DEFAULT_TOP_N = 10;
@@ -113,27 +111,26 @@ function extractJsonObject(text: string): unknown | null {
   }
 }
 
-async function callMinimaxOpenAIChat(args: {
+/** DeepSeek Chat Completions（OpenAI 兼容，支持 tools / tool_calls） */
+async function callDeepSeekChat(args: {
   apiKey: string;
   model?: string;
-  messages: AgentChatMessage[];
+  messages: AgentChatMessage[] | DeepSeekChatMessage[];
   tools?: typeof AI_AGENT_TOOLS;
   temperature?: number;
   timeoutMs?: number;
-  maxTokens?: number;
 }): Promise<
-  | { ok: true; message: Record<string, unknown> }
+  | { ok: true; content: string; message: Record<string, unknown> }
   | { ok: false; status: number; error: unknown }
 > {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 60000);
+  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 120000);
 
   try {
     const body: Record<string, unknown> = {
-      model: args.model ?? process.env.MINIMAX_MODEL ?? 'MiniMax-M2.7',
+      model: args.model ?? process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
       messages: args.messages,
       temperature: typeof args.temperature === 'number' ? args.temperature : 0.6,
-      max_tokens: args.maxTokens ?? 2048,
       stream: false,
     };
     if (args.tools && args.tools.length > 0) {
@@ -141,7 +138,7 @@ async function callMinimaxOpenAIChat(args: {
       body.tool_choice = 'auto';
     }
 
-    const resp = await fetch(MINIMAX_OPENAI_CHAT, {
+    const resp = await fetch(DEEPSEEK_CHAT_ENDPOINT, {
       method: 'POST',
       signal: controller.signal,
       headers: {
@@ -161,52 +158,8 @@ async function callMinimaxOpenAIChat(args: {
       return { ok: false as const, status: resp.status, error: { reason: 'NO_MESSAGE', json } };
     }
 
-    return { ok: true as const, message: message as Record<string, unknown> };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-async function callDeepSeekChat(args: {
-  apiKey: string;
-  model?: string;
-  messages: DeepSeekChatMessage[];
-  temperature?: number;
-  timeoutMs?: number;
-}) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 25000);
-
-  try {
-    const resp = await fetch(MINIMAX_CHAT_ENDPOINT, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${args.apiKey}`, // MiniMax uses Bearer auth
-      },
-      body: JSON.stringify({
-        model: args.model ?? process.env.MINIMAX_MODEL ?? 'MiniMax-M2.7',
-        messages: args.messages,
-        stream: false,
-        // MiniMax temperature 取值范围 (0,1]
-        temperature: typeof args.temperature === 'number' ? args.temperature : 0.6,
-        top_p: 0.95,
-        max_completion_tokens: 1024,
-      }),
-    });
-
-    const json = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      return { ok: false as const, status: resp.status, error: json };
-    }
-
-    const content = json?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') {
-      return { ok: false as const, status: resp.status, error: { reason: 'NO_CONTENT', json } };
-    }
-
-    return { ok: true as const, content };
+    const content = typeof message.content === 'string' ? message.content : '';
+    return { ok: true as const, content, message: message as Record<string, unknown> };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -219,7 +172,7 @@ async function callPerplexitySonar(args: {
   timeoutMs?: number;
 }) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 20000);
+  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 60000);
 
   try {
     const resp = await fetch(PERPLEXITY_SONAR_ENDPOINT, {
@@ -233,7 +186,6 @@ async function callPerplexitySonar(args: {
         model: args.model ?? 'sonar-pro',
         messages: args.messages,
         temperature: 0.2,
-        max_tokens: 800,
       }),
     });
 
@@ -296,7 +248,7 @@ async function runAgentChat(
   res: VercelResponse,
   args: {
     message: string;
-    minimaxKey: string;
+    deepseekKey: string;
     canUseKv: boolean;
     persistJournal: boolean;
     journalDays: number;
@@ -331,22 +283,19 @@ async function runAgentChat(
   let lastAssistantText: string | null = null;
 
   for (let round = 0; round < maxRounds; round++) {
-    const resp = await callMinimaxOpenAIChat({
-      apiKey: args.minimaxKey,
-      model: process.env.MINIMAX_MODEL ?? 'MiniMax-M2.7',
+    const resp = await callDeepSeekChat({
+      apiKey: args.deepseekKey,
       messages,
       tools: AI_AGENT_TOOLS,
-      maxTokens: 2048,
-      timeoutMs: 90000,
     });
 
     if (!resp.ok) {
       res.status(200).json({
         success: true,
         answer:
-          'Agent 模型调用失败（OpenAI Chat Completions）。请检查 MINIMAX_CHAT_COMPLETIONS_URL、MINIMAX_MODEL 与 MINIMAX_API_KEY。',
+          'Agent 模型调用失败。请检查 DEEPSEEK_API_KEY 与 DEEPSEEK_MODEL。',
         usedMatchIds: [],
-        debug: { reason: 'AGENT_MINIMAX_CALL_FAILED', status: resp.status, details: resp.error },
+        debug: { reason: 'AGENT_DEEPSEEK_CALL_FAILED', status: resp.status, details: resp.error },
         limitations: [`本请求已消耗 API-Football 调用：${quota.used}/${quota.max}`],
         agent: { toolRounds, footballCallsUsed: quota.used, maxFootballCalls: quota.max },
       });
@@ -501,17 +450,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const usePerplexityLegacy = Boolean(body?.usePerplexity);
   const modeRaw = typeof body?.mode === 'string' ? body.mode : null;
   const modeUpper = modeRaw ? modeRaw.toUpperCase() : null;
-  type AiMode = 'MINIMAX' | 'PERPLEXITY' | 'HYBRID';
+  type AiMode = 'DEEPSEEK' | 'PERPLEXITY' | 'HYBRID';
   const aiMode: AiMode =
     modeUpper === 'PERPLEXITY'
       ? 'PERPLEXITY'
-      : modeUpper === 'MINIMAX'
-        ? 'MINIMAX'
+      : modeUpper === 'DEEPSEEK' || modeUpper === 'MINIMAX'
+        ? 'DEEPSEEK'
         : modeUpper === 'HYBRID'
           ? 'HYBRID'
           : usePerplexityLegacy
             ? 'HYBRID'
-            : 'MINIMAX';
+            : 'DEEPSEEK';
 
   if (!message) {
     return res.status(400).json({
@@ -520,7 +469,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const minimaxKey = process.env.MINIMAX_API_KEY;
+  const deepseekKey = process.env.DEEPSEEK_API_KEY;
   const perplexityKey = process.env.PERPLEXITY_API_KEY;
 
   const useAgent =
@@ -528,20 +477,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     (typeof body?.chatMode === 'string' && body.chatMode.toUpperCase() === 'AGENT');
 
   if (useAgent) {
-    if (aiMode !== 'MINIMAX') {
+    if (aiMode !== 'DEEPSEEK') {
       return res.status(400).json({
         success: false,
         error: {
-          code: 'AGENT_MODE_REQUIRES_MINIMAX',
+          code: 'AGENT_MODE_REQUIRES_DEEPSEEK',
           message:
-            'Agent 模式仅支持 MINIMAX（多轮工具调用）。请改用 MINIMAX 或关闭 Agent。',
+            'Agent 模式仅支持 DEEPSEEK（多轮工具调用）。请改用 DEEPSEEK 或关闭 Agent。',
         },
       });
     }
-    if (!minimaxKey) {
+    if (!deepseekKey) {
       return res.status(500).json({
         success: false,
-        error: { code: 'MINIMAX_API_KEY_NOT_CONFIGURED', message: 'Missing MINIMAX_API_KEY' },
+        error: { code: 'DEEPSEEK_API_KEY_NOT_CONFIGURED', message: 'Missing DEEPSEEK_API_KEY' },
       });
     }
     const canUseKvAgent =
@@ -552,7 +501,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return runAgentChat(res, {
       message,
-      minimaxKey,
+      deepseekKey,
       canUseKv: canUseKvAgent,
       persistJournal,
       journalDays,
@@ -560,10 +509,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  if (aiMode !== 'PERPLEXITY' && !minimaxKey) {
+  if (aiMode !== 'PERPLEXITY' && !deepseekKey) {
     return res.status(500).json({
       success: false,
-      error: { code: 'MINIMAX_API_KEY_NOT_CONFIGURED', message: 'Missing MINIMAX_API_KEY' },
+      error: { code: 'DEEPSEEK_API_KEY_NOT_CONFIGURED', message: 'Missing DEEPSEEK_API_KEY' },
     });
   }
 
@@ -626,10 +575,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const selected = matches.slice(0, topN);
 
-  // 构建上下文时默认不塞完整 events，避免 token 爆炸。
   const context = buildMatchContext(selected, topN, {
     cacheAgeSeconds,
-    includeEvents: false,
+    includeEvents: true,
+    maxEventsPerMatch: 40,
   });
 
   const journalRows = await fetchJournalForPrompt({ days: journalDays, limit: journalLimit });
@@ -693,30 +642,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ].filter((x) => typeof x === 'string').join('\n');
 
   if (aiMode === 'HYBRID') {
-    const minimaxResp = await callDeepSeekChat({
-      apiKey: minimaxKey!,
+    const dsResp = await callDeepSeekChat({
+      apiKey: deepseekKey!,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.6,
     });
 
-    if (!minimaxResp.ok) {
+    if (!dsResp.ok) {
       return res.status(200).json({
         success: true,
-        answer: '模型调用失败，请稍后再试。（如果你在本地测试可检查 MINIMAX_API_KEY 是否配置正确）',
+        answer: '模型调用失败，请稍后再试。请检查 DEEPSEEK_API_KEY 是否配置正确。',
         usedMatchIds: selected.map((m) => m.id),
-        debug: {
-          reason: 'MINIMAX_CALL_FAILED',
-          status: minimaxResp.status,
-          details: minimaxResp.error,
-        },
+        debug: { reason: 'DEEPSEEK_CALL_FAILED', status: dsResp.status, details: dsResp.error },
         limitations: limitations.length > 0 ? limitations : undefined,
       });
     }
 
-    const parsed = extractJsonObject(minimaxResp.content);
+    const parsed = extractJsonObject(dsResp.content);
     const usedMatchIds =
       parsed && typeof parsed === 'object' && (parsed as any).usedMatchIds
         ? (parsed as any).usedMatchIds
@@ -730,20 +674,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       await respondChatWithOptionalPersist(
         res,
-        {
-          success: true,
-          ...(parsed as any),
-          usedMatchIds,
-        },
+        { success: true, ...(parsed as any), usedMatchIds },
         persistJournal
-          ? {
-              enabled: true,
-              message,
-              answer: String((parsed as any).answer),
-              selected,
-              context,
-              mode: 'HYBRID',
-            }
+          ? { enabled: true, message, answer: String((parsed as any).answer), selected, context, mode: 'HYBRID' }
           : null,
       );
       return;
@@ -751,22 +684,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await respondChatWithOptionalPersist(
       res,
-      {
-        success: true,
-        answer: minimaxResp.content,
-        usedMatchIds,
-        debug: { reason: 'JSON_PARSE_FAILED' },
-        limitations: limitations.length > 0 ? limitations : undefined,
-      },
+      { success: true, answer: dsResp.content, usedMatchIds, debug: { reason: 'JSON_PARSE_FAILED' }, limitations: limitations.length > 0 ? limitations : undefined },
       persistJournal
-        ? {
-            enabled: true,
-            message,
-            answer: minimaxResp.content,
-            selected,
-            context,
-            mode: 'HYBRID',
-          }
+        ? { enabled: true, message, answer: dsResp.content, selected, context, mode: 'HYBRID' }
         : null,
     );
     return;
@@ -780,7 +700,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      timeoutMs: 25000,
+      timeoutMs: 60000,
     });
 
     if (!perplexityResp.ok) {
@@ -853,27 +773,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  // MINIMAX 模式：只调用 Minimax
-  const minimaxResp = await callDeepSeekChat({
-    apiKey: minimaxKey!,
+  // DEEPSEEK 模式
+  const dsResp = await callDeepSeekChat({
+    apiKey: deepseekKey!,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ],
-    temperature: 0.6,
   });
 
-  if (!minimaxResp.ok) {
+  if (!dsResp.ok) {
     return res.status(200).json({
       success: true,
-      answer: '模型调用失败，请稍后再试。（如果你在本地测试可检查 MINIMAX_API_KEY 是否配置正确）',
+      answer: '模型调用失败，请稍后再试。请检查 DEEPSEEK_API_KEY 是否配置正确。',
       usedMatchIds: selected.map((m) => m.id),
-      debug: { reason: 'MINIMAX_CALL_FAILED', status: minimaxResp.status, details: minimaxResp.error },
+      debug: { reason: 'DEEPSEEK_CALL_FAILED', status: dsResp.status, details: dsResp.error },
       limitations: limitations.length > 0 ? limitations : undefined,
     });
   }
 
-  const parsed = extractJsonObject(minimaxResp.content);
+  const parsed = extractJsonObject(dsResp.content);
   const usedMatchIds =
     parsed && typeof parsed === 'object' && (parsed as any).usedMatchIds
       ? (parsed as any).usedMatchIds
@@ -887,20 +806,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     await respondChatWithOptionalPersist(
       res,
-      {
-        success: true,
-        ...(parsed as any),
-        usedMatchIds,
-      },
+      { success: true, ...(parsed as any), usedMatchIds },
       persistJournal
-        ? {
-            enabled: true,
-            message,
-            answer: String((parsed as any).answer),
-            selected,
-            context,
-            mode: 'MINIMAX',
-          }
+        ? { enabled: true, message, answer: String((parsed as any).answer), selected, context, mode: 'DEEPSEEK' }
         : null,
     );
     return;
@@ -908,22 +816,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   await respondChatWithOptionalPersist(
     res,
-    {
-      success: true,
-      answer: minimaxResp.content,
-      usedMatchIds,
-      debug: { reason: 'JSON_PARSE_FAILED' },
-      limitations: limitations.length > 0 ? limitations : undefined,
-    },
+    { success: true, answer: dsResp.content, usedMatchIds, debug: { reason: 'JSON_PARSE_FAILED' }, limitations: limitations.length > 0 ? limitations : undefined },
     persistJournal
-      ? {
-          enabled: true,
-          message,
-          answer: minimaxResp.content,
-          selected,
-          context,
-          mode: 'MINIMAX',
-        }
+      ? { enabled: true, message, answer: dsResp.content, selected, context, mode: 'DEEPSEEK' }
       : null,
   );
 }

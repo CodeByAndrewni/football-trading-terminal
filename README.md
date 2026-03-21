@@ -350,9 +350,9 @@ bun run preview
 |--------|------|------|--------|
 | `FOOTBALL_API_KEY` | API-Football API Key | 否 | - |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel KV（`GET /api/matches` 写入；`POST /api/ai/chat` 优先读缓存） | 生产建议配置 | - |
-| `MINIMAX_API_KEY` | Minimax 中国站 API Key（AI 问答：`POST /api/ai/chat`） | 是（AI） | - |
-| `MINIMAX_MODEL` | Minimax 文本对话模型名 | 否 | `MiniMax-M2.7` |
-| `MINIMAX_CHAT_COMPLETIONS_URL` | Agent 模式使用的 OpenAI 兼容 Chat Completions 完整 URL（含 `/chat/completions` 路径） | 否 | `https://api.minimaxi.com/v1/chat/completions` |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key（AI 问答：`POST /api/ai/chat`） | 是（AI） | - |
+| `DEEPSEEK_MODEL` | DeepSeek 模型名 | 否 | `deepseek-chat` |
+| `DEEPSEEK_CHAT_URL` | DeepSeek Chat Completions 完整 URL | 否 | `https://api.deepseek.com/chat/completions` |
 | `AI_AGENT_MAX_FOOTBALL_CALLS` | Agent 单次对话内 API-Football 调用上限（工具白名单内） | 否 | `20` |
 | `AI_AGENT_MAX_TOOL_ROUNDS` | Agent 模型↔工具 最大往返轮次 | 否 | `4` |
 | `PERPLEXITY_API_KEY` | Perplexity API Key（可选） | 否 | - |
@@ -361,7 +361,7 @@ bun run preview
 **AI 模式说明**
 
 - **默认（非 Agent）**：服务端先读 KV，否则回退拉取少量 live 并聚合，再调用模型（单次上下文）。
-- **Agent（`agent: true` + `mode: MINIMAX`）**：使用 Chat Completions + `tools`，由模型多轮调用 `kv_list_live_matches`、`apifootball_get_fixtures` / `statistics` / `events`，受 `AI_AGENT_*` 限制。**HYBRID / PERPLEXITY 与 Agent 互斥**（需先选 MINIMAX）。
+- **Agent（`agent: true` + `mode: DEEPSEEK`）**：使用 DeepSeek Chat Completions + `tools`，由模型多轮调用 `kv_list_live_matches`、`apifootball_get_fixtures` / `statistics` / `events`，受 `AI_AGENT_*` 限制。**HYBRID / PERPLEXITY 与 Agent 互斥**（需先选 DEEPSEEK）。
 - **判断日志（复盘记忆）**：部署 Supabase 并执行 `supabase/migrations/005_ai_trade_journal.sql` 后，`POST /api/ai/chat` 会拉取近期 `ai_trade_journal` 记录注入模型，并在每次成功回答后写入新行（需 `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`）。赛后可用 `PATCH /api/ai/journal` 更新 `outcome_status`、比分与 `ai_review`。
 - **Vercel Hobby**：Serverless 函数数量有上限；Agent 多轮请求更易触及 **执行时间** 上限，若超时请降低 `AI_AGENT_MAX_TOOL_ROUNDS` 或升级套餐并配置更长 `maxDuration`（见 Vercel 文档）。
 

@@ -11,7 +11,7 @@ import path from 'node:path';
 
 // ---------------------------------------------------------------------------
 // 本地模式下：bun 默认不会自动读取项目根目录的 `.env`。
-// 为了让 `FOOTBALL_API_KEY / MINIMAX_API_KEY / PERPLEXITY_API_KEY` 等
+// 为了让 `FOOTBALL_API_KEY / DEEPSEEK_API_KEY / PERPLEXITY_API_KEY` 等
 // 在本地 `bun run api:dev` 下也能生效，这里做一个极简 `.env` 解析器。
 // ---------------------------------------------------------------------------
 function loadLocalDotEnv() {

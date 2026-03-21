@@ -42,9 +42,9 @@ function uid() {
 
 export default function AiChatPage() {
   const [input, setInput] = useState("");
-  type AiMode = "MINIMAX" | "PERPLEXITY" | "HYBRID";
-  const [aiMode, setAiMode] = useState<AiMode>("HYBRID");
-  /** 仅 MINIMAX + Agent：多轮工具调用 KV / API-Football */
+  type AiMode = "DEEPSEEK" | "PERPLEXITY" | "HYBRID";
+  const [aiMode, setAiMode] = useState<AiMode>("DEEPSEEK");
+  /** 仅 DEEPSEEK + Agent：多轮工具调用 KV / API-Football */
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     {
@@ -92,7 +92,7 @@ export default function AiChatPage() {
     setMessages((prev) => [...prev, userMsg]);
 
     try {
-      const useAgent = agentEnabled && aiMode === "MINIMAX";
+      const useAgent = agentEnabled && aiMode === "DEEPSEEK";
 
       const resp = await fetch("/api/ai/chat", {
         method: "POST",
@@ -156,8 +156,7 @@ export default function AiChatPage() {
               <div>
                 <div className="font-semibold text-text-primary">AI 问答</div>
                 <div className="text-xs text-text-secondary">
-                  默认单次上下文；开启 Agent 后由模型多轮调用 KV / API-Football
-                  工具（仅 MINIMAX）。
+                  默认单次上下文（含事件时间轴）；开启 Agent 后由 DeepSeek 多轮调用 KV / API-Football 工具。
                 </div>
               </div>
             </div>
@@ -279,13 +278,15 @@ export default function AiChatPage() {
                 onChange={(e) => {
                   const v = e.target.value as AiMode;
                   setAiMode(v);
-                  if (v !== "MINIMAX") setAgentEnabled(false);
+                  if (v !== "DEEPSEEK") setAgentEnabled(false);
                 }}
               >
-                <option value="HYBRID">
-                  HYBRID（Perplexity 补充 + Minimax 主答）
+                <option value="DEEPSEEK">
+                  DeepSeek（推荐）
                 </option>
-                <option value="MINIMAX">MINIMAX（仅 Minimax）</option>
+                <option value="HYBRID">
+                  HYBRID（Perplexity 补充 + DeepSeek 主答）
+                </option>
                 <option value="PERPLEXITY">PERPLEXITY（仅 Perplexity）</option>
               </select>
             </div>
@@ -297,11 +298,11 @@ export default function AiChatPage() {
               <input
                 type="checkbox"
                 className="rounded border-border-default"
-                checked={agentEnabled && aiMode === "MINIMAX"}
-                disabled={loading || aiMode !== "MINIMAX"}
+                checked={agentEnabled && aiMode === "DEEPSEEK"}
+                disabled={loading || aiMode !== "DEEPSEEK"}
                 onChange={(e) => setAgentEnabled(e.target.checked)}
               />
-              <span title="多轮调用 KV 与 API-Football 端点，仅支持 MINIMAX 模式">
+              <span title="多轮调用 KV 与 API-Football 端点，仅支持 DEEPSEEK 模式">
                 启用（多轮工具，耗配额）
               </span>
             </label>
