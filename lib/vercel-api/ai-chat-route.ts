@@ -124,7 +124,7 @@ async function callDeepSeekChat(args: {
   | { ok: false; status: number; error: unknown }
 > {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 120000);
+  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 55000);
 
   try {
     const body: Record<string, unknown> = {
@@ -442,7 +442,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     90,
   );
   const journalLimit = clamp(
-    typeof body?.journalLimit === 'number' ? body.journalLimit : 40,
+    typeof body?.journalLimit === 'number' ? body.journalLimit : 20,
     1,
     100,
   );
@@ -578,7 +578,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const context = buildMatchContext(selected, topN, {
     cacheAgeSeconds,
     includeEvents: true,
-    maxEventsPerMatch: 40,
+    maxEventsPerMatch: 15,
   });
 
   const journalRows = await fetchJournalForPrompt({ days: journalDays, limit: journalLimit });

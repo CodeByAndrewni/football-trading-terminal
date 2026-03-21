@@ -104,16 +104,17 @@ export default function AiChatPage() {
           agent: useAgent,
           persistJournal: true,
           journalDays: 10,
-          journalLimit: 40,
+          journalLimit: 20,
         }),
       });
 
       const data = (await resp.json().catch(() => ({}))) as AiChatApiResponse;
       if (!resp.ok) {
-        setErrorBanner(
-          data.error?.message ?? `请求失败（HTTP ${resp.status}）`,
-        );
-        setMessages((prev) => prev.slice(0, -1));
+        const errText = data.error?.message ?? `请求失败（HTTP ${resp.status}）`;
+        setMessages((prev) => [
+          ...prev,
+          { id: uid(), role: "assistant", content: `❌ ${errText}` },
+        ]);
         return;
       }
 
@@ -140,7 +141,11 @@ export default function AiChatPage() {
         },
       ]);
     } catch (e) {
-      setErrorBanner(e instanceof Error ? e.message : "请求失败，请稍后再试。");
+      const errMsg = e instanceof Error ? e.message : "请求失败，请稍后再试。";
+      setMessages((prev) => [
+        ...prev,
+        { id: uid(), role: "assistant", content: `❌ ${errMsg}` },
+      ]);
     } finally {
       setLoading(false);
     }
