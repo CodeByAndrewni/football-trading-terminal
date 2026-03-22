@@ -12,6 +12,7 @@ import { useLiveMatchesAdvanced } from '../hooks/useMatches';
 import { calculateDynamicScore, type ScoreResult } from '../services/scoringEngine';
 import type { AdvancedMatch } from '../data/advancedMockData';
 import { soundService } from '../services/soundService';
+import { formatLeagueWithCountry } from '../utils/leagueDisplay';
 
 // ============================================
 // 指标说明定义
@@ -606,7 +607,7 @@ export function TerminalPage() {
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* 表头 */}
           <div className="flex-shrink-0 h-8 bg-[#111] border-b border-[#222] flex items-center text-[12px] text-[#888] tracking-wider font-semibold">
-            <div className="w-14 px-2 text-center">联赛</div>
+            <div className="w-[5.5rem] shrink-0 px-1 text-center">联赛</div>
             <div className="w-12 px-2 text-center">时间</div>
             <div className="w-56 px-2">对阵</div>
             <div className="w-16 px-2 text-center">比分</div>
@@ -776,7 +777,7 @@ function TerminalRow({
 
   const odds = getOddsIcon();
   const quality = getQualityBadge();
-  const leagueDisplay = match.leagueShort || match.league?.slice(0, 4) || '---';
+  const leagueDisplay = formatLeagueWithCountry(match);
 
   return (
     <>
@@ -790,7 +791,12 @@ function TerminalRow({
         onClick={onToggleExpand}
       >
         {/* 联赛 */}
-        <div className="w-14 px-2 text-center text-[#888] truncate text-[11px]">{leagueDisplay}</div>
+        <div
+          className="w-[5.5rem] shrink-0 px-1 text-center text-[#888] truncate text-[10px]"
+          title={leagueDisplay}
+        >
+          {leagueDisplay}
+        </div>
 
         {/* 分钟 */}
         <div className={`w-12 px-2 text-center tabular-nums font-semibold ${getMinuteStyle()}`}>

@@ -125,6 +125,8 @@ export interface AdvancedMatch {
   leagueShort: string;
   leagueId?: number;
   leagueLogo?: string;
+  /** API 国家名，用于区分 Primera/Liga 等同名联赛 */
+  leagueCountry?: string;
   minute: number;
   status: 'live' | 'ht' | 'ft' | 'ns' | '1h' | '2h';
 

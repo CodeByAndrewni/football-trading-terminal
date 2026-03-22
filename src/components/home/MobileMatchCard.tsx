@@ -10,6 +10,7 @@ import { LEAGUE_COLORS } from '../../data/advancedMockData';
 import { calculateDynamicScore, type ScoreResult } from '../../services/scoringEngine';
 import { useLiveClock } from '../../hooks/useLiveClock';
 import { formatMatchMinute } from '../../utils/matchTime';
+import { formatLeagueWithCountry } from '../../utils/leagueDisplay';
 
 interface MobileMatchCardProps {
   match: AdvancedMatch;
@@ -75,10 +76,11 @@ export function MobileMatchCard({ match, onToggleWatch }: MobileMatchCardProps) 
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <span
-            className="px-1.5 py-0.5 rounded text-[10px] font-medium text-white"
+            className="px-1.5 py-0.5 rounded text-[10px] font-medium text-white max-w-[min(200px,55vw)] truncate inline-block align-middle"
             style={{ backgroundColor: leagueColor }}
+            title={formatLeagueWithCountry(match)}
           >
-            {match.leagueShort}
+            {formatLeagueWithCountry(match)}
           </span>
           <div className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-accent-success animate-pulse" />

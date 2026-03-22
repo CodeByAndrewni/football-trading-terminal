@@ -281,7 +281,7 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
 
     // 异步翻译未缓存的球队/联赛名称
     // 每次最多翻译 60 个球队（2 批 Perplexity 调用），避免 serverless 超时
-    const MAX_TEAMS_PER_CYCLE = 60;
+    const MAX_TEAMS_PER_CYCLE = 96;
     const pendingTeams = collectUntranslatedTeams(fixtures as any).slice(0, MAX_TEAMS_PER_CYCLE);
     const pendingLeagues = collectUntranslatedLeagues(fixtures as any);
     if (pendingTeams.length > 0 || pendingLeagues.length > 0) {

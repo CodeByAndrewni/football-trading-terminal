@@ -9,6 +9,7 @@ import { ArrowLeft, RefreshCw, WifiOff, AlertTriangle } from 'lucide-react';
 import type { AdvancedMatch, MatchEvent } from '../data/advancedMockData';
 import { LEAGUE_COLORS } from '../data/advancedMockData';
 import { useMatchAdvanced } from '../hooks/useMatches';
+import { formatLeagueWithCountry } from '../utils/leagueDisplay';
 
 // ============================================
 // Helper: format display value, show "-" when missing
@@ -119,8 +120,12 @@ export function MatchDetailPage() {
             <Link to="/" className="text-[#888] hover:text-white transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </Link>
-            <span className="px-2 py-0.5 rounded text-[10px] font-medium text-white" style={{ backgroundColor: leagueColor }}>
-              {match.leagueShort || match.league}
+            <span
+              className="px-2 py-0.5 rounded text-[10px] font-medium text-white max-w-[min(240px,70vw)] truncate inline-block align-middle"
+              style={{ backgroundColor: leagueColor }}
+              title={formatLeagueWithCountry(match)}
+            >
+              {formatLeagueWithCountry(match)}
             </span>
           </div>
           <button

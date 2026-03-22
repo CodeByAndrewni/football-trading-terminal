@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { AdvancedMatch } from '../../data/advancedMockData';
 import { BUILTIN_STRATEGIES } from './StrategyMonitorPanel';
 import { soundService } from '../../services/soundService';
+import { formatLeagueWithCountry } from '../../utils/leagueDisplay';
 
 type AlertKey = string;
 
@@ -36,7 +37,7 @@ export function StrategyAlertMarquee({ matches, onMatchClick }: Props) {
           key,
           emoji: s.emoji,
           label: s.label,
-          text: `${h.leagueShort ?? h.league} | ${h.home?.name} ${h.home?.score ?? 0}-${h.away?.score ?? 0} ${h.away?.name} | ${h.minute}'`,
+          text: `${formatLeagueWithCountry(h)} | ${h.home?.name} ${h.home?.score ?? 0}-${h.away?.score ?? 0} ${h.away?.name} | ${h.minute}'`,
           matchId: h.id,
         });
       }

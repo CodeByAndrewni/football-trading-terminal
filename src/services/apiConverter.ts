@@ -16,6 +16,7 @@ import type {
   Bet,
 } from '../types';
 import type { AdvancedMatch, OddsInfo, AttackEvent, Substitution, CardInfo, MatchStats } from '../data/advancedMockData';
+import { fallbackLeagueShort } from '../utils/leagueDisplay';
 import { validateFixturesLive, validateStatistics, validateOddsLive, validateEvents, type DataQuality, type FixtureValidation, type StatisticsValidation, type OddsValidation, type EventsValidation } from './dataValidation';
 import { parseLiveOdds } from './oddsService';
 // TheOddsAPI removed - 500/month quota too low
@@ -609,6 +610,8 @@ export function convertApiMatchToAdvanced(
 
   // 联赛名称映射
   const leagueName = LEAGUE_NAME_MAP[match.league?.id] || match.league?.name || '未知联赛';
+  const leagueShort =
+    LEAGUE_NAME_MAP[match.league?.id] != null ? leagueName : fallbackLeagueShort(match.league?.name || '');
 
   // 状态映射
   const statusShort = match.fixture.status?.short || 'NS';
@@ -634,9 +637,10 @@ export function convertApiMatchToAdvanced(
   const advancedMatch: AdvancedMatch = {
     id: fixtureId,
     league: leagueName,
-    leagueShort: leagueName.length > 4 ? leagueName.substring(0, 4) : leagueName,
+    leagueShort,
     leagueId: match.league?.id,
     leagueLogo: match.league?.logo,
+    leagueCountry: match.league?.country || undefined,
     minute,
     status,
     extraMinute,

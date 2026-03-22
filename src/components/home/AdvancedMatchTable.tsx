@@ -11,6 +11,7 @@ import type { AdvancedMatch } from '../../data/advancedMockData';
 import { calculateDynamicScore, type ScoreResult } from '../../services/scoringEngine';
 import { useLiveClock } from '../../hooks/useLiveClock';
 import { formatMatchMinute } from '../../utils/matchTime';
+import { formatLeagueWithCountry } from '../../utils/leagueDisplay';
 
 interface AdvancedMatchTableProps {
   matches: AdvancedMatch[];
@@ -105,7 +106,9 @@ function MatchCard({
       {/* 顶部：联赛 + 时间 + 评分 */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
-          <span className="text-sm text-[#666] font-medium">{match.leagueShort || match.league}</span>
+          <span className="text-sm text-[#666] font-medium truncate max-w-[200px]" title={formatLeagueWithCountry(match)}>
+            {formatLeagueWithCountry(match)}
+          </span>
           <span className={`text-lg ${getMinuteStyle()}`}>{formatMatchMinute(match)}</span>
         </div>
         <div className="flex items-center gap-2">

@@ -15,6 +15,7 @@ import {
   type UnifiedLateSignal,
   type ScenarioTag,
 } from '../../services/modules/unifiedLateModule';
+import { formatLeagueWithCountry } from '../../utils/leagueDisplay';
 
 interface LateGameHunterPanelProps {
   matches: AdvancedMatch[];
@@ -270,7 +271,9 @@ export function LateGameHunterPanel({ matches, onMatchClick }: LateGameHunterPan
               {/* 比赛信息 */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-[#888] text-xs">{match.leagueShort}</span>
+                  <span className="text-[#888] text-xs truncate max-w-[120px]" title={formatLeagueWithCountry(match)}>
+                    {formatLeagueWithCountry(match)}
+                  </span>
                   <span className="text-white truncate">{match.home?.name}</span>
                   <span className="font-bold text-[#00d4ff]">{match.home?.score}</span>
                   <span className="text-[#444]">-</span>

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, BellOff, ChevronDown, ChevronRight, Volume2 } from 'lucide-react';
 import type { AdvancedMatch } from '../../data/advancedMockData';
 import { soundService } from '../../services/soundService';
+import { formatLeagueWithCountry } from '../../utils/leagueDisplay';
 
 // ---------------------------------------------------------------------------
 // Strategy definition
@@ -171,7 +172,7 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
           awayName: h.away?.name ?? '?',
           score: `${h.home?.score ?? 0}-${h.away?.score ?? 0}`,
           minute: h.minute ?? 0,
-          league: h.leagueShort ?? h.league ?? '',
+          league: formatLeagueWithCountry(h),
           ts: Date.now(),
         };
         setAlerts((prev) => [rec, ...prev].slice(0, 50));
@@ -308,7 +309,9 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
                           className="w-full text-left px-2.5 py-1.5 rounded bg-[#0d0d0d] hover:bg-[#181818] transition-colors"
                         >
                           <div className="flex items-center justify-between text-[10px]">
-                            <span className="text-[#888]">{h.leagueShort ?? h.league}</span>
+                            <span className="text-[#888] truncate max-w-[120px]" title={formatLeagueWithCountry(h)}>
+                              {formatLeagueWithCountry(h)}
+                            </span>
                             <span className="text-accent-primary font-mono">{h.minute}'</span>
                           </div>
                           <div className="flex items-center justify-between mt-0.5">

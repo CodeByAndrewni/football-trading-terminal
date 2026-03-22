@@ -13,6 +13,7 @@
  */
 
 import type { Match, TeamStatistics, MatchEvent, LiveOddsData, OddsData } from './api-football.js';
+import { fallbackLeagueShort } from './league-display.js';
 
 // ============================================
 // AdvancedMatch 类型定义（与前端一致）
@@ -26,6 +27,8 @@ export interface AdvancedMatch {
   leagueShort: string;          // league.name (缩写)
   leagueLogo: string;           // league.logo
   leagueFlag?: string;          // league.flag
+  /** API-Football league.country，列表展示用于区分同名联赛 */
+  leagueCountry?: string;
   round: string;                // league.round
 
   // === 球队信息 (来源: LiveCore ← /fixtures?live=all) ===
@@ -877,7 +880,7 @@ export function aggregateMatches(
       const fixtureId = fixture.fixture.id;
       const leagueInfo = LEAGUE_NAME_MAP[fixture.league.id];
       const leagueName = leagueInfo?.name || fixture.league.name;
-      const leagueShort = leagueInfo?.short || fixture.league.name.slice(0, 4);
+      const leagueShort = leagueInfo?.short || fallbackLeagueShort(fixture.league.name);
 
       // === 基础数据 (来源: LiveCore ← /fixtures?live=all) ===
       const match: AdvancedMatch = {
@@ -887,6 +890,7 @@ export function aggregateMatches(
         leagueShort,
         leagueLogo: fixture.league.logo,
         leagueFlag: fixture.league.flag || undefined,
+        leagueCountry: fixture.league.country || undefined,
         round: fixture.league.round,
         home: {
           id: fixture.teams.home.id,

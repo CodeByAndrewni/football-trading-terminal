@@ -43,6 +43,7 @@ import {
 import { OddsMovementBadge, type OddsMovement } from "../ui/OddsMovementBadge";
 import { useLiveClock } from "../../hooks/useLiveClock";
 import { formatMatchMinute } from "../../utils/matchTime";
+import { formatLeagueWithCountry } from "../../utils/leagueDisplay";
 import { CompactRating } from "./DynamicRating";
 import { getDataHealthIcon, getOddsHealthIcon } from "../../utils/scoreVisuals";
 
@@ -957,8 +958,11 @@ function MatchRow({
         <td className="px-2 py-2">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <div className="text-[11px] text-[#666] truncate">
-                {match.leagueShort || match.league?.slice(0, 24) || "-"}
+              <div
+                className="text-[11px] text-[#666] truncate"
+                title={formatLeagueWithCountry(match)}
+              >
+                {formatLeagueWithCountry(match)}
               </div>
               <div className="text-[12px] text-[#e0e0e0] truncate">
                 {match.home?.name || "-"} vs {match.away?.name || "-"}
