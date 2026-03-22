@@ -382,6 +382,7 @@ async function runAgentChat(
   res: VercelResponse,
   args: {
     message: string;
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>;
     deepseekKey: string;
     canUseKv: boolean;
     persistJournal: boolean;
@@ -423,8 +424,12 @@ async function runAgentChat(
 
   const messages: AgentChatMessage[] = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `${journalPrefix}用户问题：\n${args.message}` },
   ];
+  // 注入前几轮对话历史（前端已截断至最近 16 条，这里不再裁剪）
+  for (const h of args.history ?? []) {
+    messages.push({ role: h.role, content: h.content });
+  }
+  messages.push({ role: 'user', content: `${journalPrefix}用户问题：\n${args.message}` });
 
   let lastAssistantText: string | null = null;
 
@@ -623,6 +628,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     100,
   );
 
+  type HistoryEntry = { role: string; content: string };
+  const rawHistory = Array.isArray(body?.history) ? (body.history as HistoryEntry[]) : [];
+  const chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = rawHistory
+    .filter(
+      (h): h is { role: 'user' | 'assistant'; content: string } =>
+        (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string' && h.content.length > 0,
+    )
+    .slice(-16);
+
   const wantStream = body?.stream === true;
   const usePerplexityLegacy = Boolean(body?.usePerplexity);
   const modeRaw = typeof body?.mode === 'string' ? body.mode : null;
@@ -678,6 +692,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return runAgentChat(res, {
       message,
+      history: chatHistory,
       deepseekKey,
       canUseKv: canUseKvAgent,
       persistJournal,
@@ -879,13 +894,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : undefined,
   ].filter((x) => typeof x === 'string').join('\n');
 
+  // 构建带历史的 messages 数组（普通模式所有分支共用）
+  const chatMsgs: DeepSeekChatMessage[] = [
+    { role: 'system', content: systemPrompt },
+  ];
+  for (const h of chatHistory) {
+    chatMsgs.push({ role: h.role, content: h.content });
+  }
+  chatMsgs.push({ role: 'user', content: userPrompt });
+
   if (aiMode === 'HYBRID') {
     const dsResp = await callDeepSeekChat({
       apiKey: deepseekKey!,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
+      messages: chatMsgs,
     });
 
     if (!dsResp.ok) {
@@ -934,10 +955,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const perplexityResp = await callPerplexitySonar({
       apiKey: perplexityKey!,
       model: process.env.PERPLEXITY_MODEL ?? 'sonar-pro',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
+      messages: chatMsgs,
       timeoutMs: 60000,
     });
 
@@ -1015,10 +1033,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (wantStream && aiMode === 'DEEPSEEK' && deepseekKey) {
     const streamResult = await callDeepSeekChatStreamRaw({
       apiKey: deepseekKey,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
+      messages: chatMsgs,
     });
 
     if (!streamResult.ok) {
@@ -1093,10 +1108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ---- DEEPSEEK 非流式模式 ----
   const dsResp = await callDeepSeekChat({
     apiKey: deepseekKey!,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
+    messages: chatMsgs,
   });
 
   if (!dsResp.ok) {

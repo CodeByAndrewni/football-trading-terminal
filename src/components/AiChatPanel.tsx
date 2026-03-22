@@ -144,12 +144,28 @@ export function AiChatPanel({ className }: AiChatPanelProps) {
     const useAgent = agentEnabled && aiMode === "DEEPSEEK";
     const canStream = aiMode === "DEEPSEEK" && !useAgent;
 
+    // 构建对话历史（最近 8 轮，截断过长回复避免打爆 token）
+    const MAX_HISTORY_PAIRS = 8;
+    const ASSISTANT_TRIM = 1200;
+    const historyForApi = messages
+      .filter((m) => m.content !== WELCOME && !m.content.startsWith("已切换到"))
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-(MAX_HISTORY_PAIRS * 2))
+      .map((m) => ({
+        role: m.role as string,
+        content:
+          m.role === "assistant" && m.content.length > ASSISTANT_TRIM
+            ? m.content.slice(0, ASSISTANT_TRIM) + "\n…（已截断）"
+            : m.content,
+      }));
+
     try {
       const resp = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text, topN: 20, mode: aiMode, agent: useAgent,
+          history: historyForApi,
           stream: canStream,
           persistJournal: true, journalDays: 10, journalLimit: 20,
         }),
