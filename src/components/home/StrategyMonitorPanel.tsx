@@ -175,14 +175,6 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
           ts: Date.now(),
         };
         setAlerts((prev) => [rec, ...prev].slice(0, 50));
-        if (soundOn) soundService.play('high_score');
-        // Browser notification (non-blocking)
-        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-          new Notification(`${s.emoji} ${s.label}`, {
-            body: `${rec.league} | ${rec.homeName} ${rec.score} ${rec.awayName} | ${rec.minute}'`,
-            icon: '/favicon.ico',
-          });
-        }
       }
     }
   }, [hitsMap, enabledIds, soundOn]);

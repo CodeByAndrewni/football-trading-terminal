@@ -28,6 +28,7 @@ import { AcceptanceReport } from '../components/home/AcceptanceReport';
 import { LateGameHunterPanel } from '../components/home/LateGameHunterPanel';
 import { LateHunterPanel } from '../components/home/LateHunterPanel';
 import { StrategyMonitorPanel } from '../components/home/StrategyMonitorPanel';
+import { StrategyAlertMarquee } from '../components/home/StrategyAlertMarquee';
 import { getWatchlist, addToWatchlist, removeFromWatchlist } from '../services/battleRoomWatchlist';
 // Phase 2: Live Scanner Engine
 import {
@@ -999,6 +1000,9 @@ export function HomePage() {
           </div>
         </div>
       )}
+
+      {/* 策略命中跑马灯 */}
+      <StrategyAlertMarquee matches={processedMatches} onMatchClick={(id) => navigate(`/match/${id}`)} />
 
       {/* ============================================ */}
       {/* 主体内容区 */}

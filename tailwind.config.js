@@ -37,6 +37,7 @@ export default {
         'fade-in': 'fadeIn 0.3s ease-out',
         'slide-up': 'slideUp 0.3s ease-out',
         'glow': 'glow 2s ease-in-out infinite alternate',
+        'marquee': 'marquee 20s linear infinite',
       },
       keyframes: {
         numberRoll: {
@@ -66,6 +67,10 @@ export default {
         glow: {
           '0%': { boxShadow: '0 0 5px rgba(0, 212, 255, 0.5)' },
           '100%': { boxShadow: '0 0 20px rgba(0, 212, 255, 0.8), 0 0 30px rgba(0, 212, 255, 0.4)' },
+        },
+        marquee: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-100%)' },
         },
       },
       boxShadow: {

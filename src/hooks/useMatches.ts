@@ -387,13 +387,25 @@ export function useMatchAdvanced(matchId: number | undefined, options?: {
   enabled?: boolean;
   refetchInterval?: number | false;
 }) {
+  const queryClient = useQueryClient();
+
   return useQuery({
     queryKey: queryKeys.matches.detailAdvanced(matchId ?? 0),
     queryFn: async () => {
       if (!matchId) return null;
 
+      // 优先从已缓存的聚合列表中查找（不消耗额外 API 调用）
+      const cached = queryClient.getQueryData<MatchesResult>(queryKeys.matches.liveAdvanced());
+      if (cached?.matches) {
+        const found = cached.matches.find((m) => m.id === matchId);
+        if (found) {
+          return { match: found, dataSource: (cached.dataSource ?? 'aggregated') as DataSource };
+        }
+      }
+
+      // 缓存中未找到时，尝试直连 API（需要 key）
       if (!isApiKeyConfigured()) {
-        console.error('[useMatches] API key not configured');
+        console.error('[useMatches] Match not in cache and API key not configured');
         return null;
       }
 
