@@ -216,17 +216,21 @@ export type AiScoreResultRow = {
 export function buildAiScoreResultsById(matches: AdvancedMatch[]): Record<number, AiScoreResultRow> {
   const out: Record<number, AiScoreResultRow> = {};
   for (const m of matches) {
-    const sr = calculateDynamicScore(m);
-    if (!sr) continue;
-    out[m.id] = {
-      totalScore: sr.totalScore,
-      confidence: sr.confidence,
-      stars: sr.stars,
-      recommendation: sr.recommendation,
-      alerts: sr.alerts,
-      dataHealthScore: sr.dataHealthScore ?? null,
-      oddsHealthScore: sr.oddsHealthScore ?? null,
-    };
+    try {
+      const sr = calculateDynamicScore(m);
+      if (!sr) continue;
+      out[m.id] = {
+        totalScore: sr.totalScore,
+        confidence: sr.confidence,
+        stars: sr.stars,
+        recommendation: sr.recommendation,
+        alerts: sr.alerts,
+        dataHealthScore: sr.dataHealthScore ?? null,
+        oddsHealthScore: sr.oddsHealthScore ?? null,
+      };
+    } catch {
+      // 单场异常数据不拖垮整次 AI 请求
+    }
   }
   return out;
 }
