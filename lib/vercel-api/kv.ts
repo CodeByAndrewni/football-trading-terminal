@@ -11,12 +11,14 @@ import { kv } from '@vercel/kv';
 
 export const KV_CONFIG = {
   // 数据 TTL（秒）
-  MATCHES_TTL: 90,           // 90秒 - 聚合结果（比 Cron 间隔稍长）
-  META_TTL: 90,              // 90秒 - 刷新元数据
+  MATCHES_TTL: 120,          // 120秒 - 聚合结果（含扩展字段）
+  META_TTL: 120,             // 120秒 - 刷新元数据
   STATISTICS_TTL: 90,        // 90秒 - 统计数据
   EVENTS_TTL: 90,            // 90秒 - 事件数据
   LIVE_ODDS_TTL: 60,         // 60秒 - 滚球赔率
   PREMATCH_ODDS_TTL: 300,    // 5分钟 - 赛前赔率
+  STANDINGS_TTL: 21_600,     // 6小时 - 积分榜（变化慢）
+  TEAM_STATS_TTL: 86_400,    // 24小时 - 球队赛季统计
   LOCK_TTL: 45,              // 45秒 - 分布式锁
   METRICS_TTL: 86400,        // 24小时 - 监控指标
 } as const;
@@ -35,6 +37,9 @@ export const KV_KEYS = {
   prematchOdds: (id: number) => `odds:pre:${id}`,
   metricsDaily: (date: string) => `metrics:calls:${date}`,
   lastRefresh: 'refresh:last',
+  standings: (leagueId: number, season: number) => `standings:${leagueId}:${season}`,
+  teamStats: (teamId: number, leagueId: number, season: number) =>
+    `teamstats:${teamId}:${leagueId}:${season}`,
 } as const;
 
 // ============================================
@@ -53,6 +58,8 @@ export interface RefreshMeta {
   matchesWithAnyOdds?: number;      // 有任意赔率的比赛数
   matchesWithOverUnder?: number;    // 有大小球盘口的比赛数
   matchesWithStats?: number;        // 有统计数据的比赛数
+  standingsLeaguesFetched?: number; // 本次拉取的联赛积分榜数（去重）
+  enrichmentsWithData?: number;     // 有扩展字段（预测/伤病等）的比赛数
 }
 
 export interface MatchesCache {

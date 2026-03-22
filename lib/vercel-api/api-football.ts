@@ -198,6 +198,52 @@ export async function getFixtureLineups(fixtureId: number): Promise<unknown[]> {
   });
 }
 
+/**
+ * 联赛积分榜（API-Football v3 /standings）
+ */
+export async function getStandings(leagueId: number, season: number): Promise<unknown> {
+  return fetchAPI<unknown>('/standings', {
+    league: leagueId.toString(),
+    season: season.toString(),
+  });
+}
+
+/**
+ * 两队历史对战（最近对阵，/fixtures/headtohead）
+ */
+export async function getHeadToHead(homeTeamId: number, awayTeamId: number): Promise<unknown> {
+  return fetchAPI<unknown>('/fixtures/headtohead', {
+    h2h: `${homeTeamId}-${awayTeamId}`,
+  });
+}
+
+/** 赛前预测摘要 /predictions */
+export async function getPredictions(fixtureId: number): Promise<unknown> {
+  return fetchAPI<unknown>('/predictions', {
+    fixture: fixtureId.toString(),
+  });
+}
+
+/** 伤病 /injuries */
+export async function getInjuries(fixtureId: number): Promise<unknown> {
+  return fetchAPI<unknown>('/injuries', {
+    fixture: fixtureId.toString(),
+  });
+}
+
+/** 球队赛季统计 /teams/statistics（BTTS、进球时段等） */
+export async function getTeamsStatistics(
+  teamId: number,
+  leagueId: number,
+  season: number,
+): Promise<unknown> {
+  return fetchAPI<unknown>('/teams/statistics', {
+    team: teamId.toString(),
+    league: leagueId.toString(),
+    season: season.toString(),
+  });
+}
+
 // ============================================
 // 赔率数据
 // ============================================

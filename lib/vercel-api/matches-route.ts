@@ -21,6 +21,13 @@ import {
 } from './api-football.js';
 import { aggregateMatches, calculateBasicKillScore } from './aggregator.js';
 import { persistLiveToSupabase } from './supabase-live-persist.js';
+import {
+  enrichFixtures,
+  fetchStandingsForLiveFixtures,
+  applyRanksToMatches,
+  mergeEnrichmentIntoMatches,
+} from './live-enrichment.js';
+import type { AdvancedMatch } from './aggregator.js';
 
 // ============================================
 // 配置
@@ -71,8 +78,8 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
       .filter(f => liveStatuses.includes(f.fixture.status.short))
       .map(f => f.fixture.id);
 
-    // 2. 并行获取统计和事件
-    const [statisticsMap, eventsMap] = await Promise.all([
+    // 2. 并行：统计、事件、赔率（赛前覆盖全部场次）、各联赛积分榜（KV 长缓存）
+    const [statisticsMap, eventsMap, liveOddsMap, prematchOddsMap, leagueSeasonRanks] = await Promise.all([
       getStatisticsBatch(liveFixtureIds, {
         batchSize: CONFIG.STATS_BATCH_SIZE,
         batchDelay: CONFIG.STATS_BATCH_DELAY,
@@ -81,18 +88,15 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
         batchSize: CONFIG.STATS_BATCH_SIZE,
         batchDelay: CONFIG.STATS_BATCH_DELAY,
       }),
-    ]);
-
-    // 3. 获取赔率
-    const [liveOddsMap, prematchOddsMap] = await Promise.all([
       getLiveOddsBatch(fixtureIds, {
         batchSize: CONFIG.ODDS_BATCH_SIZE,
         batchDelay: CONFIG.ODDS_BATCH_DELAY,
       }),
-      getPrematchOddsBatch(fixtureIds.slice(0, 20), {
+      getPrematchOddsBatch(fixtureIds, {
         batchSize: CONFIG.ODDS_BATCH_SIZE,
         batchDelay: CONFIG.ODDS_BATCH_DELAY,
       }),
+      fetchStandingsForLiveFixtures(fixtures),
     ]);
 
     // ----- 赔率诊断：API 原始返回 -----
@@ -143,6 +147,11 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
       prematchOddsMap
     );
 
+    applyRanksToMatches(fixtures, matches, leagueSeasonRanks);
+
+    const enrichmentMap = await enrichFixtures(fixtures);
+    mergeEnrichmentIntoMatches(matches, enrichmentMap);
+
     // 计算评分
     for (const match of matches) {
       match.killScore = calculateBasicKillScore(match);
@@ -192,6 +201,8 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
       matchesWithAnyOdds,
       matchesWithOverUnder,
       matchesWithStats,
+      standingsLeaguesFetched: leagueSeasonRanks.size,
+      enrichmentsWithData: enrichmentMap.size,
     };
 
     // 赔率数据流诊断：确认写入 KV 前首条带 odds

@@ -205,6 +205,16 @@ export interface AdvancedMatch {
   kickoffTime?: string;        // 开赛时间 ISO 格式
   startTime?: string;          // 开赛时间（备用）
   homeTeamId?: number;         // 主队 ID（用于事件判断）
+
+  /** API-Football 扩展：预测、伤病、阵容、对战、球队赛季统计等（聚合层写入） */
+  enrichment?: {
+    predictions?: unknown;
+    injuries?: unknown;
+    lineups?: unknown;
+    headToHead?: unknown;
+    teamStatsHome?: unknown;
+    teamStatsAway?: unknown;
+  };
 }
 
 // 比赛事件类型

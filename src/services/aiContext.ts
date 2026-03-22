@@ -17,8 +17,8 @@ export interface AiMatchCard {
   minute: number;
   status: string;
 
-  home: { name: string; score: number; handicap: number | null };
-  away: { name: string; score: number; overUnder: number | null };
+  home: { name: string; score: number; handicap: number | null; rank?: number | null };
+  away: { name: string; score: number; overUnder: number | null; rank?: number | null };
 
   corners: { home: number | null; away: number | null } | null;
   cardsYellow: { home: number | null; away: number | null } | null;
@@ -52,6 +52,9 @@ export interface AiMatchCard {
     player: string | null;
     detail?: string | null;
   }[];
+
+  /** 预测、伤病、阵容、对战、球队赛季统计等（体积可能较大，已截断） */
+  enrichment?: unknown;
 }
 
 export interface AiMatchIndex {
@@ -82,6 +85,23 @@ function safeInt(n: unknown): number | null {
 
 function safeNumber(n: unknown): number | null {
   return typeof n === 'number' && Number.isFinite(n) ? n : null;
+}
+
+const ENRICHMENT_JSON_MAX = 6000;
+
+function compactEnrichmentForPrompt(e: unknown): unknown {
+  if (e == null) return undefined;
+  try {
+    const s = JSON.stringify(e);
+    if (s.length <= ENRICHMENT_JSON_MAX) return e;
+    return {
+      _truncated: true,
+      _note: `JSON 长度 ${s.length}，已截断至 ${ENRICHMENT_JSON_MAX} 字符`,
+      preview: s.slice(0, ENRICHMENT_JSON_MAX),
+    };
+  } catch {
+    return { _error: 'enrichment_not_serializable' };
+  }
 }
 
 function extractTeamSide(e: MatchEvent | undefined): AiTeamSide {
@@ -256,6 +276,8 @@ export function buildMatchContext(
 
       const scoreSummary = scoreResultsById[m.id];
 
+      const enr = (m as { enrichment?: unknown }).enrichment;
+
       return {
         id: m.id,
         leagueShort: m.leagueShort,
@@ -265,11 +287,13 @@ export function buildMatchContext(
           name: m.home.name,
           score: safeInt(m.home.score) ?? 0,
           handicap: m.home.handicap ?? null,
+          rank: m.home.rank ?? null,
         },
         away: {
           name: m.away.name,
           score: safeInt(m.away.score) ?? 0,
           overUnder: m.away.overUnder ?? null,
+          rank: m.away.rank ?? null,
         },
         corners,
         cardsYellow,
@@ -289,6 +313,7 @@ export function buildMatchContext(
             }
           : undefined,
         events: includeEvents ? miniEvents(m.events, maxEventsPerMatch) : undefined,
+        enrichment: compactEnrichmentForPrompt(enr),
       };
     }),
     allMatchIndex: allMatchIndex.length > 0 ? allMatchIndex : undefined,

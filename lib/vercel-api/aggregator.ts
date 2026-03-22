@@ -96,6 +96,16 @@ export interface AdvancedMatch {
   // === 晚期进球模型预留字段 (Phase 3) ===
   lateGoalProb?: number;    // 80分钟后再进一球的概率 (0-1)
   lateGoalScore?: number;   // 晚期进球评分 (0-100)
+
+  /** API 扩展：预测、伤病、阵容、对战、球队赛季统计（live-enrichment 写入） */
+  enrichment?: {
+    predictions?: unknown;
+    injuries?: unknown;
+    lineups?: unknown;
+    headToHead?: unknown;
+    teamStatsHome?: unknown;
+    teamStatsAway?: unknown;
+  };
 }
 
 // === 结构失衡指标 (Phase 2) ===

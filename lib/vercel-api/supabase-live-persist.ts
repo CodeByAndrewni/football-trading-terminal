@@ -30,8 +30,8 @@ interface AggregatedMatch {
   leagueShort?: string;
   status?: string;
   minute?: number;
-  home?: { id?: number; name?: string; score?: number };
-  away?: { id?: number; name?: string; score?: number };
+  home?: { id?: number; name?: string; score?: number; rank?: number | null };
+  away?: { id?: number; name?: string; score?: number; rank?: number | null };
   events?: Array<{
     time?: { elapsed?: number; extra?: number | null };
     team?: { id?: number; name?: string };
@@ -66,6 +66,7 @@ interface AggregatedMatch {
   };
   timestamp?: number;
   round?: string;
+  enrichment?: unknown;
 }
 
 function eventHash(fixtureId: number, evt: AggregatedMatch['events'] extends (infer E)[] | undefined ? E : never): string {
@@ -98,6 +99,12 @@ export async function persistLiveToSupabase(matches: unknown[]): Promise<void> {
       home_score: m.home?.score ?? null,
       away_score: m.away?.score ?? null,
       status: m.status ?? 'LIVE',
+      raw: {
+        home_rank: m.home?.rank ?? null,
+        away_rank: m.away?.rank ?? null,
+        enrichment: m.enrichment ?? null,
+        captured_at: now,
+      },
     }));
 
     const { error: fErr } = await sb
