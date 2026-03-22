@@ -124,7 +124,7 @@ async function callDeepSeekChat(args: {
   | { ok: false; status: number; error: unknown }
 > {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 55000);
+  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 120000);
 
   try {
     const body: Record<string, unknown> = {
@@ -162,6 +162,50 @@ async function callDeepSeekChat(args: {
     return { ok: true as const, content, message: message as Record<string, unknown> };
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+/** DeepSeek Chat Completions — streaming mode, returns raw Response for SSE piping */
+async function callDeepSeekChatStreamRaw(args: {
+  apiKey: string;
+  model?: string;
+  messages: DeepSeekChatMessage[];
+  temperature?: number;
+  timeoutMs?: number;
+}): Promise<{ ok: true; response: Response } | { ok: false; status: number; error: unknown }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), args.timeoutMs ?? 150000);
+
+  try {
+    const resp = await fetch(DEEPSEEK_CHAT_ENDPOINT, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${args.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: args.model ?? process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
+        messages: args.messages,
+        temperature: typeof args.temperature === 'number' ? args.temperature : 0.6,
+        stream: true,
+      }),
+    });
+
+    if (!resp.ok) {
+      clearTimeout(timeoutId);
+      const json = await resp.json().catch(() => ({}));
+      return { ok: false as const, status: resp.status, error: json };
+    }
+
+    // NOTE: we intentionally don't clearTimeout here — it will be cleared
+    // when the caller finishes consuming the stream (or on abort).
+    // Store cleanup reference on the response for the caller.
+    (resp as any).__cleanupTimeout = () => clearTimeout(timeoutId);
+    return { ok: true as const, response: resp };
+  } catch (e) {
+    clearTimeout(timeoutId);
+    return { ok: false as const, status: 0, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -463,6 +507,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     100,
   );
 
+  const wantStream = body?.stream === true;
   const usePerplexityLegacy = Boolean(body?.usePerplexity);
   const modeRaw = typeof body?.mode === 'string' ? body.mode : null;
   const modeUpper = modeRaw ? modeRaw.toUpperCase() : null;
@@ -594,7 +639,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const context = buildMatchContext(selected, topN, {
     cacheAgeSeconds,
     includeEvents: true,
-    maxEventsPerMatch: 15,
+    maxEventsPerMatch: 30,
     allMatches: matches,
   });
 
@@ -826,7 +871,86 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  // DEEPSEEK 模式
+  // ---- DEEPSEEK streaming 模式 ----
+  if (wantStream && aiMode === 'DEEPSEEK' && deepseekKey) {
+    const streamResult = await callDeepSeekChatStreamRaw({
+      apiKey: deepseekKey,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    });
+
+    if (!streamResult.ok) {
+      return res.status(200).json({
+        success: true,
+        answer: '模型调用失败，请稍后再试。请检查 DEEPSEEK_API_KEY 是否配置正确。',
+        usedMatchIds: selected.map((m) => m.id),
+        debug: { reason: 'DEEPSEEK_STREAM_FAILED', status: streamResult.status, details: streamResult.error },
+        limitations: limitations.length > 0 ? limitations : undefined,
+      });
+    }
+
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders?.();
+
+    const upstream = streamResult.response;
+    const reader = upstream.body?.getReader();
+    if (!reader) {
+      res.write(`data: ${JSON.stringify({ error: 'NO_STREAM_BODY' })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let fullContent = '';
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') {
+            // Send final metadata event
+            const journalId = persistJournal && fullContent
+              ? await insertAiTradeJournal({ message, answer: fullContent, selected, context, mode: 'DEEPSEEK' })
+              : null;
+            res.write(`data: ${JSON.stringify({ done: true, journalEntryId: journalId, usedMatchIds: selected.map((m) => m.id), limitations: limitations.length > 0 ? limitations : undefined })}\n\n`);
+            continue;
+          }
+          try {
+            const chunk = JSON.parse(payload);
+            const delta = chunk?.choices?.[0]?.delta?.content;
+            if (typeof delta === 'string' && delta.length > 0) {
+              fullContent += delta;
+              res.write(`data: ${JSON.stringify({ t: delta })}\n\n`);
+            }
+          } catch { /* skip malformed chunk */ }
+        }
+      }
+    } catch (e) {
+      res.write(`data: ${JSON.stringify({ error: e instanceof Error ? e.message : 'stream_error' })}\n\n`);
+    } finally {
+      (upstream as any).__cleanupTimeout?.();
+      reader.releaseLock();
+      res.end();
+    }
+    return;
+  }
+
+  // ---- DEEPSEEK 非流式模式 ----
   const dsResp = await callDeepSeekChat({
     apiKey: deepseekKey!,
     messages: [

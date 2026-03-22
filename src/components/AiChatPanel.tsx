@@ -128,30 +128,90 @@ export function AiChatPanel({ className }: AiChatPanelProps) {
     setInput("");
     setMessages((prev) => [...prev, { id: uid(), role: "user", content: text }]);
 
+    const useAgent = agentEnabled && aiMode === "DEEPSEEK";
+    const canStream = aiMode === "DEEPSEEK" && !useAgent;
+
     try {
-      const useAgent = agentEnabled && aiMode === "DEEPSEEK";
       const resp = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text, topN: 20, mode: aiMode, agent: useAgent,
+          stream: canStream,
           persistJournal: true, journalDays: 10, journalLimit: 20,
         }),
       });
-      const data = (await resp.json().catch(() => ({}))) as AiChatApiResponse;
-      if (!resp.ok) {
-        setMessages((prev) => [...prev, { id: uid(), role: "assistant", content: `❌ ${data.error?.message ?? `HTTP ${resp.status}`}` }]);
+
+      // Non-streaming path (agent, hybrid, perplexity, or stream unsupported)
+      if (!canStream || !resp.body || !resp.headers.get("content-type")?.includes("text/event-stream")) {
+        const data = (await resp.json().catch(() => ({}))) as AiChatApiResponse;
+        if (!resp.ok) {
+          setMessages((prev) => [...prev, { id: uid(), role: "assistant", content: `❌ ${data.error?.message ?? `HTTP ${resp.status}`}` }]);
+          return;
+        }
+        const answer = typeof data.answer === "string" ? data.answer : null;
+        setMessages((prev) => [...prev, {
+          id: uid(), role: "assistant",
+          content: answer ?? "模型未返回有效答案，请稍后重试。",
+          journalEntryId: typeof data.journalEntryId === "string" ? data.journalEntryId : undefined,
+          usedMatchIds: Array.isArray(data.usedMatchIds) ? data.usedMatchIds : undefined,
+          limitations: Array.isArray(data.limitations) ? data.limitations : undefined,
+          agent: data.agent,
+        }]);
         return;
       }
-      const answer = typeof data.answer === "string" ? data.answer : null;
-      setMessages((prev) => [...prev, {
-        id: uid(), role: "assistant",
-        content: answer ?? "模型未返回有效答案，请稍后重试。",
-        journalEntryId: typeof data.journalEntryId === "string" ? data.journalEntryId : undefined,
-        usedMatchIds: Array.isArray(data.usedMatchIds) ? data.usedMatchIds : undefined,
-        limitations: Array.isArray(data.limitations) ? data.limitations : undefined,
-        agent: data.agent,
-      }]);
+
+      // Streaming path
+      const assistantId = uid();
+      setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "" }]);
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6).trim();
+          if (!payload) continue;
+          try {
+            const evt = JSON.parse(payload);
+            if (evt.t) {
+              // Incremental text chunk
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantId ? { ...m, content: m.content + evt.t } : m)
+              );
+            }
+            if (evt.done) {
+              // Final metadata
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantId ? {
+                  ...m,
+                  journalEntryId: evt.journalEntryId ?? undefined,
+                  usedMatchIds: evt.usedMatchIds ?? undefined,
+                  limitations: evt.limitations ?? undefined,
+                } : m)
+              );
+            }
+            if (evt.error) {
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantId ? { ...m, content: m.content + `\n\n❌ ${evt.error}` } : m)
+              );
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
+
+      // Handle case where stream had no content
+      setMessages((prev) =>
+        prev.map((m) => m.id === assistantId && !m.content ? { ...m, content: "模型未返回有效答案，请稍后重试。" } : m)
+      );
     } catch (e) {
       setMessages((prev) => [...prev, { id: uid(), role: "assistant", content: `❌ ${e instanceof Error ? e.message : "请求失败"}` }]);
     } finally {
@@ -222,7 +282,7 @@ export function AiChatPanel({ className }: AiChatPanelProps) {
               )}
             </div>
           ))}
-          {loading && (
+          {loading && !messages.some((m) => m.role === "assistant" && m.content === "") && (
             <div className="px-2.5 py-2 rounded-lg bg-bg-component border border-border-default">
               <div className="flex items-center gap-1.5 text-xs text-text-secondary">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" /> 思考中…

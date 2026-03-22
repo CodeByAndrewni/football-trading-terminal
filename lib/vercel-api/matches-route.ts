@@ -20,6 +20,7 @@ import {
   resetApiCallsThisCycle,
 } from './api-football.js';
 import { aggregateMatches, calculateBasicKillScore } from './aggregator.js';
+import { persistLiveToSupabase } from './supabase-live-persist.js';
 
 // ============================================
 // 配置
@@ -208,6 +209,11 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
     await saveMatches(matches, meta);
     await incrementApiCalls(apiCallsThisCycle);
 
+    // Fire-and-forget: persist to Supabase for historical analysis
+    persistLiveToSupabase(matches).catch((e) =>
+      console.error('[Refresh] Supabase persist failed:', e instanceof Error ? e.message : e),
+    );
+
     console.log(`[Refresh] Complete: ${matches.length} matches, ${apiCallsThisCycle} API calls, ${Date.now() - startTime}ms`);
 
     return { matches, meta };
@@ -354,5 +360,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 export const config = {
-  maxDuration: 60, // 允许最长 60 秒（刷新可能需要时间）
+  maxDuration: 180,
 };
