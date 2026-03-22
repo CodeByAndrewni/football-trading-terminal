@@ -2,12 +2,54 @@
 // 足球交易决策终端 - 主应用
 // ============================================
 
-import { Suspense, lazy, useEffect } from 'react';
+import { Component, Suspense, lazy, useEffect } from 'react';
+import type { ReactNode, ErrorInfo } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 import { ToastProvider } from './components/ui/Toast';
 import { initDataSync } from './services/dataSyncService';
+
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[ErrorBoundary]', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-screen bg-[#0a0f14] flex items-center justify-center p-6">
+          <div className="max-w-lg text-center space-y-4">
+            <div className="text-red-400 text-lg font-semibold">页面渲染出错</div>
+            <div className="text-gray-400 text-sm font-mono bg-gray-900 rounded p-3 text-left whitespace-pre-wrap break-all">
+              {this.state.error.message}
+            </div>
+            <button
+              type="button"
+              className="px-4 py-2 bg-cyan-600 text-white rounded hover:bg-cyan-500 text-sm"
+              onClick={() => this.setState({ error: null })}
+            >
+              重试
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // 路由级代码分割
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -41,8 +83,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <BrowserRouter>
-          <Suspense fallback={<PageLoading />}>
-            <Routes>
+          <ErrorBoundary>
+            <Suspense fallback={<PageLoading />}>
+              <Routes>
             {/* 首页 - 比赛大厅（独立布局） */}
             <Route path="/" element={<HomePage />} />
 
@@ -80,7 +123,8 @@ function App() {
             <Route path="/monitor" element={<Navigate to="/battle" replace />} />
             <Route path="/radar" element={<Navigate to="/battle" replace />} />
             </Routes>
-          </Suspense>
+            </Suspense>
+          </ErrorBoundary>
         </BrowserRouter>
       </ToastProvider>
     </QueryClientProvider>
