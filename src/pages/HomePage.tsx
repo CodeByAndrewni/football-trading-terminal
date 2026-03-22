@@ -12,6 +12,7 @@ import {
   Menu, LayoutGrid, LayoutList, ChevronUp, TrendingUp, Target, Zap, Bot
 } from 'lucide-react';
 // LeagueSidebar removed per P0 requirements
+import { AiChatPanel } from '../components/AiChatPanel';
 import { AdvancedMatchTable } from '../components/home/AdvancedMatchTable';
 import { MatchTableV2 } from '../components/home/MatchTableV2';
 import { DataStatsPanel } from '../components/home/DataStatsPanel';
@@ -1088,15 +1089,8 @@ export function HomePage() {
           </div>
         </main>
 
-        {/* 右侧尾盘猎手面板 */}
-        <aside className="hidden xl:block w-80 bg-[#0d0d0d] border-l border-[#222] flex-shrink-0 overflow-hidden">
-          <div className="h-full overflow-auto p-2">
-            <LateGameHunterPanel
-              matches={processedMatches}
-              onMatchClick={(matchId) => navigate(`/match/${matchId}`)}
-            />
-          </div>
-        </aside>
+        {/* 右侧面板：AI 交易顾问 / 尾盘猎手 */}
+        <RightSidePanel processedMatches={processedMatches} onMatchClick={(matchId) => navigate(`/match/${matchId}`)} />
       </div>
 
       {/* 移动端菜单 */}
@@ -1106,6 +1100,66 @@ export function HomePage() {
         onOpenSettings={() => {/* Settings handled elsewhere */}}
       />
     </div>
+  );
+}
+
+type RightTab = 'ai' | 'hunter';
+
+function RightSidePanel({ processedMatches, onMatchClick }: {
+  processedMatches: MatchWithScore[];
+  onMatchClick: (id: number) => void;
+}) {
+  const [tab, setTab] = useState<RightTab>('ai');
+  const [width, setWidth] = useState(420);
+  const dragging = useRef(false);
+  const startX = useRef(0);
+  const startW = useRef(0);
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!dragging.current) return;
+      const delta = startX.current - e.clientX;
+      setWidth(Math.min(800, Math.max(300, startW.current + delta)));
+    }
+    function onUp() { dragging.current = false; document.body.style.cursor = ''; document.body.style.userSelect = ''; }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, []);
+
+  return (
+    <aside className="hidden xl:flex flex-shrink-0 h-full" style={{ width }}>
+      {/* 拖拽条 */}
+      <div
+        className="w-1.5 bg-[#111] hover:bg-accent-primary/30 cursor-col-resize transition-colors flex-shrink-0"
+        onMouseDown={(e) => { dragging.current = true; startX.current = e.clientX; startW.current = width; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
+      />
+      <div className="flex-1 flex flex-col bg-[#0d0d0d] overflow-hidden">
+        {/* Tab 切换 */}
+        <div className="flex-none flex border-b border-[#222]">
+          <button type="button"
+            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${tab === 'ai' ? 'text-accent-primary border-b-2 border-accent-primary bg-[#0a0f14]' : 'text-[#888] hover:text-[#ccc]'}`}
+            onClick={() => setTab('ai')}>
+            <Bot className="w-3.5 h-3.5 inline mr-1" />AI 交易顾问
+          </button>
+          <button type="button"
+            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${tab === 'hunter' ? 'text-accent-primary border-b-2 border-accent-primary bg-[#0a0f14]' : 'text-[#888] hover:text-[#ccc]'}`}
+            onClick={() => setTab('hunter')}>
+            <Zap className="w-3.5 h-3.5 inline mr-1" />尾盘猎手
+          </button>
+        </div>
+        {/* 内容 */}
+        <div className="flex-1 overflow-hidden">
+          {tab === 'ai' ? (
+            <AiChatPanel className="h-full" />
+          ) : (
+            <div className="h-full overflow-auto p-2">
+              <LateGameHunterPanel matches={processedMatches} onMatchClick={onMatchClick} />
+            </div>
+          )}
+        </div>
+      </div>
+    </aside>
   );
 }
 

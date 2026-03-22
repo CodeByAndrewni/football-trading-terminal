@@ -2,6 +2,15 @@ import type { AdvancedMatch, MatchEvent } from '../data/advancedMockData';
 
 export type AiTeamSide = 'home' | 'away';
 
+export interface AiOdds {
+  handicap?: { home: number | null; value: number | null; away: number | null };
+  overUnder?: { over: number | null; total: number | null; under: number | null };
+  matchWinner?: { home: number | null; draw: number | null; away: number | null };
+  bts?: { yes: number | null; no: number | null };
+  source?: 'live' | 'prematch' | null;
+  noOdds?: boolean;
+}
+
 export interface AiMatchCard {
   id: number;
   leagueShort: string;
@@ -12,6 +21,7 @@ export interface AiMatchCard {
   away: { name: string; score: number; overUnder: number | null };
 
   corners: { home: number | null; away: number | null } | null;
+  cardsYellow: { home: number | null; away: number | null } | null;
   cardsRed: { home: number | null; away: number | null } | null;
 
   stats: {
@@ -20,6 +30,8 @@ export interface AiMatchCard {
     shotsOnTarget: { home: number | null; away: number | null } | null;
     xG: { home: number | null; away: number | null } | null;
   } | null;
+
+  odds: AiOdds;
 
   killScore: number | null;
 
@@ -33,7 +45,6 @@ export interface AiMatchCard {
     oddsHealthScore: number | null;
   };
 
-  // 仅用于需要“进球/红牌时间点”时的辅助（可选、默认不填）
   events?: {
     minute: number;
     type: string;
@@ -91,11 +102,55 @@ function miniEvents(
   return simplified.slice(0, maxEventsPerMatch);
 }
 
-/**
- * 把 AdvancedMatch 压缩为 LLM 友好的、尽量短的结构化上下文。
- * - 缺失字段用 `null` 表示
- * - 别在上下文里放大块数据（比如完整 events）
- */
+function extractOdds(m: AdvancedMatch): AiOdds {
+  const raw = (m as any).odds;
+  if (!raw || (m as any).noOddsFromProvider) {
+    return { noOdds: true, source: (m as any)._oddsSource ?? null };
+  }
+
+  const result: AiOdds = {
+    source: (m as any)._oddsSource ?? null,
+  };
+
+  if (raw.handicap && (raw.handicap.home != null || raw.handicap.value != null)) {
+    result.handicap = {
+      home: safeNumber(raw.handicap.home),
+      value: safeNumber(raw.handicap.value),
+      away: safeNumber(raw.handicap.away),
+    };
+  }
+
+  if (raw.overUnder && (raw.overUnder.total != null || raw.overUnder.over != null)) {
+    result.overUnder = {
+      over: safeNumber(raw.overUnder.over),
+      total: safeNumber(raw.overUnder.total),
+      under: safeNumber(raw.overUnder.under),
+    };
+  }
+
+  if (raw.matchWinner && (raw.matchWinner.home != null || raw.matchWinner.draw != null)) {
+    result.matchWinner = {
+      home: safeNumber(raw.matchWinner.home),
+      draw: safeNumber(raw.matchWinner.draw),
+      away: safeNumber(raw.matchWinner.away),
+    };
+  }
+
+  if (raw.bothTeamsScore && (raw.bothTeamsScore.yes != null)) {
+    result.bts = {
+      yes: safeNumber(raw.bothTeamsScore.yes),
+      no: safeNumber(raw.bothTeamsScore.no),
+    };
+  }
+
+  const hasAnyOdds = result.handicap || result.overUnder || result.matchWinner || result.bts;
+  if (!hasAnyOdds) {
+    result.noOdds = true;
+  }
+
+  return result;
+}
+
 export function buildMatchContext(
   matches: AdvancedMatch[],
   topN: number,
@@ -143,6 +198,13 @@ export function buildMatchContext(
           ? { home: safeInt(m.cards.red.home), away: safeInt(m.cards.red.away) }
           : null;
 
+      const cardsYellow =
+        m.cards?.yellow &&
+        typeof m.cards.yellow.home === 'number' &&
+        typeof m.cards.yellow.away === 'number'
+          ? { home: safeInt(m.cards.yellow.home), away: safeInt(m.cards.yellow.away) }
+          : null;
+
       const stats = m.stats
         ? {
             possession: {
@@ -182,8 +244,10 @@ export function buildMatchContext(
           overUnder: m.away.overUnder ?? null,
         },
         corners,
+        cardsYellow,
         cardsRed,
         stats,
+        odds: extractOdds(m),
         killScore: safeNumber(m.killScore),
         score: scoreSummary
           ? {
@@ -201,4 +265,3 @@ export function buildMatchContext(
     }),
   };
 }
-
