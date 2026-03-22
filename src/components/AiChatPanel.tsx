@@ -114,6 +114,19 @@ export function AiChatPanel({ className }: AiChatPanelProps) {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
+  /** 切换 Agent 开关时保留聊天历史，只追加一条提示 */
+  const prevAgentRef = useRef(agentEnabled);
+  useEffect(() => {
+    if (prevAgentRef.current !== agentEnabled && messages.length > 1) {
+      const label = agentEnabled ? "Agent 模式" : "普通模式";
+      setMessages((prev) => [
+        ...prev,
+        { id: uid(), role: "assistant", content: `已切换到 **${label}**，历史聊天保留。` },
+      ]);
+    }
+    prevAgentRef.current = agentEnabled;
+  }, [agentEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll on change
   useEffect(() => {
     const el = scrollRef.current;
@@ -231,7 +244,17 @@ export function AiChatPanel({ className }: AiChatPanelProps) {
           <select
             className="bg-bg-component border border-border-default rounded px-1.5 py-1 text-xs text-text-primary focus:outline-none"
             value={aiMode}
-            onChange={(e) => { setAiMode(e.target.value as AiMode); if (e.target.value !== "DEEPSEEK") setAgentEnabled(false); }}
+            onChange={(e) => {
+              const next = e.target.value as AiMode;
+              setAiMode(next);
+              if (next !== "DEEPSEEK") setAgentEnabled(false);
+              if (messages.length > 1) {
+                setMessages((prev) => [
+                  ...prev,
+                  { id: uid(), role: "assistant", content: `已切换到 **${next}** 模式，历史聊天保留。` },
+                ]);
+              }
+            }}
           >
             <option value="DEEPSEEK">DeepSeek</option>
             <option value="HYBRID">HYBRID</option>
@@ -251,21 +274,21 @@ export function AiChatPanel({ className }: AiChatPanelProps) {
         </div>
       </div>
 
-      {/* 消息区 */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-2 py-2">
+      {/* 消息区 — select-text 覆盖页面级 select-none，让用户可选取文字 */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-2 py-2 select-text">
         <div className="space-y-2">
           {messages.map((m) => (
             <div key={m.id} className={`group relative px-2.5 py-2 rounded-lg ${
               m.role === "user" ? "bg-accent-primary/10 border border-accent-primary/20" : "bg-bg-component border border-border-default"
             }`}>
-              <div className="flex items-center justify-between mb-0.5">
+              <div className="flex items-center justify-between mb-0.5 select-none">
                 <span className="text-xs text-text-muted">{m.role === "user" ? "你" : "助手"}</span>
                 {m.role === "assistant" && <CopyButton text={m.content} />}
               </div>
               {m.role === "assistant" ? (
-                <div className="prose-chat"><MarkdownContent content={m.content} /></div>
+                <div className="prose-chat cursor-text"><MarkdownContent content={m.content} /></div>
               ) : (
-                <div className="whitespace-pre-wrap text-xs text-text-primary">{m.content}</div>
+                <div className="whitespace-pre-wrap text-xs text-text-primary cursor-text">{m.content}</div>
               )}
               {m.role === "assistant" && m.limitations && m.limitations.length > 0 && (
                 <div className="mt-1 text-xs text-accent-warning/90 space-y-0.5">
