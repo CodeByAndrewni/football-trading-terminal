@@ -65,6 +65,16 @@ function favoriteTrailingLate(m: AdvancedMatch): boolean {
   return true;
 }
 
+/**
+ * 红牌比赛
+ * 场上任一方出现红牌即命中，不限时间、不限联赛。
+ */
+function hasRedCard(m: AdvancedMatch): boolean {
+  const red = m.cards?.red;
+  if (!red) return false;
+  return (red.home ?? 0) + (red.away ?? 0) > 0;
+}
+
 export const BUILTIN_STRATEGIES: StrategyDef[] = [
   {
     id: 'favorite_trailing_80',
@@ -72,6 +82,13 @@ export const BUILTIN_STRATEGIES: StrategyDef[] = [
     emoji: '🎯',
     desc: '初盘O/U≥3.5 · 让球±1 · 半场有球 · 下半场双方各进≥1 · 75-88\'让球方落后1球',
     filter: favoriteTrailingLate,
+  },
+  {
+    id: 'red_card_alert',
+    label: '红牌比赛',
+    emoji: '🟥',
+    desc: '场上任一方出现红牌 — 不限时间、不限联赛',
+    filter: hasRedCard,
   },
 ];
 
