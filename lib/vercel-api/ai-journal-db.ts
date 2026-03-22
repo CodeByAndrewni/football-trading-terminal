@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { AdvancedMatch } from '../../src/data/advancedMockData';
-import type { AiChatContext } from '../../src/services/aiContext.js';
+import type { AiChatContext } from './ai-context.js';
 
 export type AiTradeJournalRow = {
   id: string;

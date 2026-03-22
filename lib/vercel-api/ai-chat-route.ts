@@ -5,7 +5,7 @@ import {
   buildAiScoreResultsById,
   buildMatchContext,
   type AiChatContext,
-} from '../../src/services/aiContext.js';
+} from './ai-context.js';
 import type { AdvancedMatch } from '../../src/data/advancedMockData';
 import {
   compactJournalForPrompt,
