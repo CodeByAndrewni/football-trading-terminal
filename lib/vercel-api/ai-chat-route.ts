@@ -1,7 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { parseRequestJsonBody } from './parse-request-json.js';
 import { getMatches } from './kv.js';
-import { buildMatchContext, type AiChatContext } from '../../src/services/aiContext.js';
+import {
+  buildAiScoreResultsById,
+  buildMatchContext,
+  type AiChatContext,
+} from '../../src/services/aiContext.js';
 import type { AdvancedMatch } from '../../src/data/advancedMockData';
 import {
   compactJournalForPrompt,
@@ -18,6 +22,7 @@ import {
   getDefaultMaxFootballCalls,
   getDefaultMaxToolRounds,
 } from './ai-tool-executor.js';
+import { TEAM_NAME_COMPACT_SNIPPETS } from './ai-team-focus.js';
 
 const DEEPSEEK_CHAT_ENDPOINT =
   process.env.DEEPSEEK_CHAT_URL ?? 'https://api.deepseek.com/chat/completions';
@@ -47,6 +52,75 @@ type AgentChatMessage =
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+/** 从 body 或用户消息中解析「当前想重点分析」的 fixture id（须在 live 列表中） */
+function resolveFocusFixtureId(
+  message: string,
+  body: { fixtureId?: unknown; focusFixtureId?: unknown },
+  matches: AdvancedMatch[],
+): number | null {
+  const raw =
+    typeof body.fixtureId === 'number' && Number.isFinite(body.fixtureId)
+      ? body.fixtureId
+      : typeof body.focusFixtureId === 'number' && Number.isFinite(body.focusFixtureId)
+        ? body.focusFixtureId
+        : null;
+  if (raw != null && raw > 0 && matches.some((m) => m.id === raw)) {
+    return Math.trunc(raw);
+  }
+
+  const fromMsg = message.match(/(?:fixture|比赛|场次)\s*[#:]?\s*(\d{6,9})\b/i);
+  if (fromMsg) {
+    const id = parseInt(fromMsg[1], 10);
+    if (matches.some((m) => m.id === id)) return id;
+  }
+
+  const hashId = message.match(/#(\d{6,9})\b/);
+  if (hashId) {
+    const id = parseInt(hashId[1], 10);
+    if (matches.some((m) => m.id === id)) return id;
+  }
+
+  const compact = message.replace(/\s+/g, '');
+  const lower = message.toLowerCase();
+  const candidates = matches.filter((m) => {
+    const h = m.home.name.replace(/\s/g, '').toLowerCase();
+    const a = m.away.name.replace(/\s/g, '').toLowerCase();
+    if (h.length < 2 || a.length < 2) return false;
+    return (
+      (compact.includes(h) && compact.includes(a)) ||
+      (lower.includes(h) && lower.includes(a))
+    );
+  });
+  if (candidates.length === 1) return candidates[0].id;
+
+  const keysCn = Object.keys(TEAM_NAME_COMPACT_SNIPPETS).sort((a, b) => b.length - a.length);
+  for (const cn of keysCn) {
+    if (!message.includes(cn)) continue;
+    const snippet = TEAM_NAME_COMPACT_SNIPPETS[cn];
+    const hit = matches.filter((m) => {
+      const h = m.home.name.replace(/\s/g, '').toLowerCase();
+      const a = m.away.name.replace(/\s/g, '').toLowerCase();
+      return h.includes(snippet) || a.includes(snippet);
+    });
+    if (hit.length === 1) return hit[0].id;
+  }
+
+  return null;
+}
+
+/** 将焦点场次置顶并取前 topN，保证点名场次在详细区 */
+function selectMatchesForAiContext(
+  matches: AdvancedMatch[],
+  topN: number,
+  focusId: number | null,
+): AdvancedMatch[] {
+  if (focusId == null) return matches.slice(0, topN);
+  const focus = matches.find((m) => m.id === focusId);
+  if (!focus) return matches.slice(0, topN);
+  const rest = matches.filter((m) => m.id !== focusId);
+  return [focus, ...rest].slice(0, topN);
 }
 
 async function respondChatWithOptionalPersist(
@@ -328,6 +402,7 @@ async function runAgentChat(
     '【排除】拖延、换下前锋、VAR碎片化等。',
     '',
     '【输出】每场：是否入场、大球/下一球方向、窗口止损、置信度+理由；不值得一行 ❌。标题行禁止 ** 粗体。',
+    '若工具返回的上下文中 odds.noOdds 或缺盘口：仍须给出定性建议，勿仅因无赔率拒答。',
   ].join('\n');
 
   const messages: AgentChatMessage[] = [
@@ -629,13 +704,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const selected = matches.slice(0, topN);
+  const bodyRecord = (body ?? {}) as { fixtureId?: unknown; focusFixtureId?: unknown };
+  const focusFixtureId = resolveFocusFixtureId(message, bodyRecord, matches);
+
+  const requestedFixtureRaw =
+    typeof bodyRecord.fixtureId === 'number' && Number.isFinite(bodyRecord.fixtureId)
+      ? bodyRecord.fixtureId
+      : typeof bodyRecord.focusFixtureId === 'number' && Number.isFinite(bodyRecord.focusFixtureId)
+        ? bodyRecord.focusFixtureId
+        : null;
+
+  const selected = selectMatchesForAiContext(matches, topN, focusFixtureId);
+
+  const scoreResultsById = buildAiScoreResultsById(selected);
+  const maxEv = focusFixtureId != null ? 40 : 30;
 
   const context = buildMatchContext(selected, topN, {
     cacheAgeSeconds,
     includeEvents: true,
-    maxEventsPerMatch: 30,
+    maxEventsPerMatch: maxEv,
     allMatches: matches,
+    scoreResultsById,
+    focusMatchId: focusFixtureId,
   });
 
   const journalRows = await fetchJournalForPrompt({ days: journalDays, limit: journalLimit });
@@ -646,6 +736,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : '';
 
   const limitations: string[] = [];
+  if (
+    requestedFixtureRaw != null &&
+    requestedFixtureRaw > 0 &&
+    !matches.some((m) => m.id === Math.trunc(requestedFixtureRaw))
+  ) {
+    limitations.push(
+      `请求的 fixtureId=${Math.trunc(requestedFixtureRaw)} 不在当前 live 列表中，已按 killScore 默认排序。`,
+    );
+  }
   let perplexityBackground: string | null = null;
 
   const systemPrompt = [
@@ -654,6 +753,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     '【为什么后段容易出球】体能下降、防守注意力下降、落后方压上、换人加强进攻、节奏碎片化后的反击等，会同时提高绝杀与大球概率。可用此逻辑解释，但不要编造具体百分比除非 JSON 中有。',
     '',
     '【数据来源】随请求附带「当前 live 聚合比赛上下文」JSON（Vercel KV + API-Football 聚合）。含 matches / allMatchIndex；单场可含 home.rank / away.rank（联赛排名）、enrichment（预测、伤病、阵容、对战、球队赛季统计等，可能截断）。',
+    '若 meta.focusFixtureId 有值：用户点名了该场，matches[0] 优先为该场；events 为时间序后 N 条（滚球近期事件）。焦点可通过 fixtureId、双队英文名、或常见中文队名（如曼联、利物浦）在 live 列表中唯一命中时解析。',
+    '单场 score 块（若存在）来自与终端一致的动态评分引擎：totalScore / recommendation / stars / alerts / dataHealthScore / oddsHealthScore；无此块表示 STRICT 下不可评分或数据不足。',
+    'meta.aggregatedDimensions 列出本 snapshot 已聚合的数据维度；meta.detailMatchesWithOddsMarkets 为「详细区」有至少一项可解析盘口（亚盘/大小/胜平负/BTS）的场次数。',
+    '【赔率与 noOdds】系统已拉取赛前+滚球赔率；若 API-Football 对该场返回空或未订阅 Odds 附加包，则 odds.noOdds=true。当 detailMatchesWithOddsMarkets=0 或单场 odds.noOdds：仍必须完成下方「每场比赛必须回答」四段；基于 stats、events、rank、enrichment、比分与分钟做定性大球/Late 建议；明确标注「无市场隐含概率，仅场面与数据逻辑」；禁止整段仅回答「无法分析/无赔率无法建议」。价值处可加 ⚠️ 无赔率无法算 implied probability。',
     '当用户问到不在 matches 里的比赛时，先在 allMatchIndex 中查找；enrichment 缺字段时写「上下文未提供，勿编造」。',
     '若消息中出现「Perplexity 补充参考」，引用时请区分。',
     '',
@@ -684,7 +787,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     '',
     '【输出格式】标题行禁止 ** 粗体：',
     '⚽ {联赛} | {主队} vs {客队} | {比分} | ⏱️{分钟} | 排名 #{主} vs #{客}（若有）| 🟨 🟥 | 控球 | 射(正) vs 射(正)',
-    '📊 赔率行同上。可用 Markdown 代码块输出 ASCII 框梳理要点。',
+    '📊 赔率行：有盘口则写亚盘/大小/胜平负/BTS；无盘口则写「无盘口数据」并仍给定性结论。可用 Markdown 代码块输出 ASCII 框梳理要点。',
     '结论 emoji：✅ ⚠️ ❌ 🔴 🟡 ⭐',
   ].join('\n');
 

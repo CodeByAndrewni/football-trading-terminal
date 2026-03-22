@@ -60,13 +60,43 @@ interface AggregatedMatch {
     handicap?: { value?: number | null; home?: number | null; away?: number | null };
     overUnder?: { total?: number | null; over?: number | null; under?: number | null };
     matchWinner?: { home?: number | null; draw?: number | null; away?: number | null };
+    bothTeamsScore?: { yes?: number | null; no?: number | null };
     bts?: { yes?: number | null; no?: number | null };
     _oddsSource?: string;
     _fetch_status?: string;
   };
+  /** 与聚合层 AdvancedMatch 一致 */
+  _oddsSource?: 'live' | 'prematch' | null;
   timestamp?: number;
   round?: string;
   enrichment?: unknown;
+}
+
+export type PersistTier = 'gold' | 'silver' | 'bronze';
+
+/** 金：已解析出至少一类盘口；银：无完整盘口但有统计或事件；铜：其余 */
+function getPersistTier(m: AggregatedMatch): { tier: PersistTier; reason: string } {
+  const o = m.odds;
+  const btsYes = o?.bothTeamsScore?.yes ?? o?.bts?.yes;
+  const hasParsedOdds =
+    o &&
+    o._fetch_status === 'SUCCESS' &&
+    (o.handicap?.value != null ||
+      o.handicap?.home != null ||
+      o.overUnder?.total != null ||
+      o.matchWinner?.home != null ||
+      btsYes != null);
+
+  if (hasParsedOdds) return { tier: 'gold', reason: 'parsed_odds' };
+
+  const s = m.stats;
+  const hasStats = s && s._realDataAvailable;
+  const evLen = m.events?.length ?? 0;
+  if (hasStats && evLen > 0) return { tier: 'silver', reason: 'stats_and_events' };
+  if (hasStats) return { tier: 'silver', reason: 'stats_only' };
+  if (evLen > 0) return { tier: 'silver', reason: 'events_only' };
+
+  return { tier: 'bronze', reason: 'minimal' };
 }
 
 function eventHash(fixtureId: number, evt: AggregatedMatch['events'] extends (infer E)[] | undefined ? E : never): string {
@@ -85,27 +115,40 @@ export async function persistLiveToSupabase(matches: unknown[]): Promise<void> {
   const typed = matches as AggregatedMatch[];
 
   try {
+    let goldN = 0;
+    let silverN = 0;
+    let bronzeN = 0;
+
     // 1. raw_fixtures — upsert basic match info
-    const fixtureRows = typed.map((m) => ({
-      fixture_id: m.id,
-      league_id: m.leagueId ?? 0,
-      season: new Date().getFullYear(),
-      match_date: new Date().toISOString().split('T')[0],
-      kickoff: m.timestamp ? new Date(m.timestamp * 1000).toISOString() : now,
-      home_team_id: m.home?.id ?? 0,
-      away_team_id: m.away?.id ?? 0,
-      home_team_name: m.home?.name ?? null,
-      away_team_name: m.away?.name ?? null,
-      home_score: m.home?.score ?? null,
-      away_score: m.away?.score ?? null,
-      status: m.status ?? 'LIVE',
-      raw: {
-        home_rank: m.home?.rank ?? null,
-        away_rank: m.away?.rank ?? null,
-        enrichment: m.enrichment ?? null,
-        captured_at: now,
-      },
-    }));
+    const fixtureRows = typed.map((m) => {
+      const { tier, reason } = getPersistTier(m);
+      if (tier === 'gold') goldN++;
+      else if (tier === 'silver') silverN++;
+      else bronzeN++;
+
+      return {
+        fixture_id: m.id,
+        league_id: m.leagueId ?? 0,
+        season: new Date().getFullYear(),
+        match_date: new Date().toISOString().split('T')[0],
+        kickoff: m.timestamp ? new Date(m.timestamp * 1000).toISOString() : now,
+        home_team_id: m.home?.id ?? 0,
+        away_team_id: m.away?.id ?? 0,
+        home_team_name: m.home?.name ?? null,
+        away_team_name: m.away?.name ?? null,
+        home_score: m.home?.score ?? null,
+        away_score: m.away?.score ?? null,
+        status: m.status ?? 'LIVE',
+        raw: {
+          home_rank: m.home?.rank ?? null,
+          away_rank: m.away?.rank ?? null,
+          enrichment: m.enrichment ?? null,
+          captured_at: now,
+          persist_tier: tier,
+          persist_tier_reason: reason,
+        },
+      };
+    });
 
     const { error: fErr } = await sb
       .from('raw_fixtures')
@@ -207,7 +250,7 @@ export async function persistLiveToSupabase(matches: unknown[]): Promise<void> {
     for (const m of typed) {
       const o = m.odds;
       if (!o || o._fetch_status !== 'SUCCESS') continue;
-      const isLive = o._oddsSource === 'live';
+      const isLive = m._oddsSource === 'live' || o._oddsSource === 'live';
 
       if (o.handicap?.value != null) {
         oddsRows.push({ fixture_id: m.id, bookmaker: 'aggregated', market: 'AH', line: o.handicap.value, selection: 'Home', odds: o.handicap.home ?? 0, is_live: isLive, captured_at: now });
@@ -222,9 +265,10 @@ export async function persistLiveToSupabase(matches: unknown[]): Promise<void> {
         oddsRows.push({ fixture_id: m.id, bookmaker: 'aggregated', market: '1X2', line: null, selection: 'Draw', odds: o.matchWinner.draw ?? 0, is_live: isLive, captured_at: now });
         oddsRows.push({ fixture_id: m.id, bookmaker: 'aggregated', market: '1X2', line: null, selection: 'Away', odds: o.matchWinner.away ?? 0, is_live: isLive, captured_at: now });
       }
-      if (o.bts?.yes != null) {
-        oddsRows.push({ fixture_id: m.id, bookmaker: 'aggregated', market: 'BTS', line: null, selection: 'Yes', odds: o.bts.yes, is_live: isLive, captured_at: now });
-        oddsRows.push({ fixture_id: m.id, bookmaker: 'aggregated', market: 'BTS', line: null, selection: 'No', odds: o.bts.no ?? 0, is_live: isLive, captured_at: now });
+      const bts = o.bothTeamsScore ?? o.bts;
+      if (bts?.yes != null) {
+        oddsRows.push({ fixture_id: m.id, bookmaker: 'aggregated', market: 'BTS', line: null, selection: 'Yes', odds: bts.yes, is_live: isLive, captured_at: now });
+        oddsRows.push({ fixture_id: m.id, bookmaker: 'aggregated', market: 'BTS', line: null, selection: 'No', odds: bts.no ?? 0, is_live: isLive, captured_at: now });
       }
     }
 
@@ -237,7 +281,9 @@ export async function persistLiveToSupabase(matches: unknown[]): Promise<void> {
       }
     }
 
-    console.log(`[LivePersist] Done: ${fixtureRows.length} fixtures, ${eventRows.length} events, ${statRows.length} stats, ${oddsRows.length} odds rows`);
+    console.log(
+      `[LivePersist] Done: ${fixtureRows.length} fixtures (gold ${goldN} / silver ${silverN} / bronze ${bronzeN}), ${eventRows.length} events, ${statRows.length} stats, ${oddsRows.length} odds rows`,
+    );
   } catch (e) {
     console.error('[LivePersist] Unexpected error:', e instanceof Error ? e.message : e);
   }

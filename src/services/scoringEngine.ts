@@ -11,6 +11,17 @@ import type { TeamSeasonStats, ScoringFactors, ScoreResult, OddsAnalysis } from 
 // 重新导出类型，供其他模块使用
 export type { ScoringFactors, ScoreResult } from '../types';
 
+/** 生产环境默认不刷「不可评分」warn，避免日志噪音；需要排查时设 SCORING_VERBOSE_LOGS=true */
+function logScoringUnscoreable(message: string): void {
+  if (process.env.SCORING_VERBOSE_LOGS === 'true') {
+    console.warn(message);
+    return;
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn(message);
+  }
+}
+
 // 基础分
 const BASE_SCORE = 30;
 
@@ -1166,7 +1177,9 @@ export function calculateDynamicScore(
   // STRICT REAL DATA MODE: 检查是否可评分
   const unscoreableReason = checkScoreability(match);
   if (unscoreableReason) {
-    console.warn(`[STRICT MODE] Match ${match.id} (${match.home.name} vs ${match.away.name}) unscoreable: ${unscoreableReason}`);
+    logScoringUnscoreable(
+      `[STRICT MODE] Match ${match.id} (${match.home.name} vs ${match.away.name}) unscoreable: ${unscoreableReason}`,
+    );
     return null;
   }
 
@@ -1267,7 +1280,9 @@ export function calculateDynamicScoreWithOdds(
   // STRICT REAL DATA MODE: 检查是否可评分
   const unscoreableReason = checkScoreability(match);
   if (unscoreableReason) {
-    console.warn(`[STRICT MODE] Match ${match.id} (${match.home.name} vs ${match.away.name}) unscoreable: ${unscoreableReason}`);
+    logScoringUnscoreable(
+      `[STRICT MODE] Match ${match.id} (${match.home.name} vs ${match.away.name}) unscoreable: ${unscoreableReason}`,
+    );
     return null;
   }
 

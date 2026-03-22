@@ -1,4 +1,5 @@
 import type { AdvancedMatch, MatchEvent } from '../data/advancedMockData';
+import { calculateDynamicScore } from './scoringEngine';
 
 export type AiTeamSide = 'home' | 'away';
 
@@ -73,6 +74,12 @@ export interface AiChatContext {
     cacheAgeSeconds?: number | null;
     matchCount: number;
     totalLive: number;
+    /** 详细区 matches 中，至少有一项可解析盘口（亚盘/大小/胜平负/BTS）的场次数 */
+    detailMatchesWithOddsMarkets?: number;
+    /** 本 snapshot 聚合了哪些数据维度（供模型自检） */
+    aggregatedDimensions?: string;
+    /** 用户指定或从消息解析的焦点场次（详细区第一场优先为该场） */
+    focusFixtureId?: number | null;
   };
   topN: number;
   matches: AiMatchCard[];
@@ -88,16 +95,17 @@ function safeNumber(n: unknown): number | null {
 }
 
 const ENRICHMENT_JSON_MAX = 6000;
+const ENRICHMENT_JSON_MAX_FOCUS = 12000;
 
-function compactEnrichmentForPrompt(e: unknown): unknown {
+function compactEnrichmentForPrompt(e: unknown, maxChars: number = ENRICHMENT_JSON_MAX): unknown {
   if (e == null) return undefined;
   try {
     const s = JSON.stringify(e);
-    if (s.length <= ENRICHMENT_JSON_MAX) return e;
+    if (s.length <= maxChars) return e;
     return {
       _truncated: true,
-      _note: `JSON 长度 ${s.length}，已截断至 ${ENRICHMENT_JSON_MAX} 字符`,
-      preview: s.slice(0, ENRICHMENT_JSON_MAX),
+      _note: `JSON 长度 ${s.length}，已截断至 ${maxChars} 字符`,
+      preview: s.slice(0, maxChars),
     };
   } catch {
     return { _error: 'enrichment_not_serializable' };
@@ -131,12 +139,23 @@ function miniEvents(
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
   if (simplified.length === 0) return undefined;
-  return simplified.slice(0, maxEventsPerMatch);
+  simplified.sort((a, b) => a.minute - b.minute);
+  return simplified.slice(-maxEventsPerMatch);
 }
 
 function extractOdds(m: AdvancedMatch): AiOdds {
   const raw = (m as any).odds;
-  if (!raw || (m as any).noOddsFromProvider) {
+  const noOddsFromProvider = (m as any).noOddsFromProvider === true;
+  // 若供应商标记无赔率，但对象里仍有 SUCCESS 且已解析出的盘口，仍以实际字段为准（避免 KV/序列化丢 flag）
+  const hasParsedMarketsInRaw =
+    raw &&
+    (raw._fetch_status === 'SUCCESS' ||
+      (raw.handicap && (raw.handicap.value != null || raw.handicap.home != null || raw.handicap.away != null)) ||
+      (raw.overUnder && (raw.overUnder.total != null || raw.overUnder.over != null || raw.overUnder.under != null)) ||
+      (raw.matchWinner && (raw.matchWinner.home != null || raw.matchWinner.draw != null || raw.matchWinner.away != null)) ||
+      (raw.bothTeamsScore && raw.bothTeamsScore.yes != null));
+
+  if (!raw || (noOddsFromProvider && !hasParsedMarketsInRaw)) {
     return { noOdds: true, source: (m as any)._oddsSource ?? null };
   }
 
@@ -183,6 +202,35 @@ function extractOdds(m: AdvancedMatch): AiOdds {
   return result;
 }
 
+export type AiScoreResultRow = {
+  totalScore: number | null;
+  confidence: number | null;
+  stars: number | null;
+  recommendation: string | null;
+  alerts: string[] | undefined;
+  dataHealthScore: number | null;
+  oddsHealthScore: number | null;
+};
+
+/** 与终端 UI 一致的动态评分（无赔率因子扩展）；不可评分场次跳过 */
+export function buildAiScoreResultsById(matches: AdvancedMatch[]): Record<number, AiScoreResultRow> {
+  const out: Record<number, AiScoreResultRow> = {};
+  for (const m of matches) {
+    const sr = calculateDynamicScore(m);
+    if (!sr) continue;
+    out[m.id] = {
+      totalScore: sr.totalScore,
+      confidence: sr.confidence,
+      stars: sr.stars,
+      recommendation: sr.recommendation,
+      alerts: sr.alerts,
+      dataHealthScore: sr.dataHealthScore ?? null,
+      oddsHealthScore: sr.oddsHealthScore ?? null,
+    };
+  }
+  return out;
+}
+
 export function buildMatchContext(
   matches: AdvancedMatch[],
   topN: number,
@@ -191,23 +239,15 @@ export function buildMatchContext(
     includeEvents?: boolean;
     maxEventsPerMatch?: number;
     allMatches?: AdvancedMatch[];
-    scoreResultsById?: Record<
-      number,
-      {
-        totalScore: number | null;
-        confidence: number | null;
-        stars: number | null;
-        recommendation: string | null;
-        alerts: string[] | undefined;
-        dataHealthScore: number | null;
-        oddsHealthScore: number | null;
-      }
-    >;
+    scoreResultsById?: Record<number, AiScoreResultRow>;
+    /** 该场 enrichment 使用更高字符上限（与 message 中点名场次配合） */
+    focusMatchId?: number | null;
   },
 ): AiChatContext {
   const includeEvents = params?.includeEvents ?? false;
   const maxEventsPerMatch = params?.maxEventsPerMatch ?? 20;
   const scoreResultsById = params?.scoreResultsById ?? {};
+  const focusMatchId = params?.focusMatchId ?? null;
   const allMatches = params?.allMatches ?? matches;
 
   const sliced = matches.slice(0, topN);
@@ -225,12 +265,22 @@ export function buildMatchContext(
       status: m.status,
     }));
 
+  let detailMatchesWithOddsMarkets = 0;
+  for (const m of sliced) {
+    const o = extractOdds(m);
+    if (!o.noOdds) detailMatchesWithOddsMarkets++;
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     meta: {
       cacheAgeSeconds: params?.cacheAgeSeconds ?? null,
       matchCount: sliced.length,
       totalLive: allMatches.length,
+      detailMatchesWithOddsMarkets,
+      aggregatedDimensions:
+        'live fixtures + statistics + events + odds (prematch+live when API returns) + standings ranks + enrichment (predictions, injuries, lineups, h2h, team season stats); allMatchIndex is compact index only (no odds)',
+      focusFixtureId: focusMatchId,
     },
     topN: topN,
     matches: sliced.map((m) => {
@@ -313,7 +363,10 @@ export function buildMatchContext(
             }
           : undefined,
         events: includeEvents ? miniEvents(m.events, maxEventsPerMatch) : undefined,
-        enrichment: compactEnrichmentForPrompt(enr),
+        enrichment: compactEnrichmentForPrompt(
+          enr,
+          m.id === focusMatchId ? ENRICHMENT_JSON_MAX_FOCUS : ENRICHMENT_JSON_MAX,
+        ),
       };
     }),
     allMatchIndex: allMatchIndex.length > 0 ? allMatchIndex : undefined,
