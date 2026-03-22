@@ -43,6 +43,12 @@ function uid() {
 const WELCOME =
   "滚球交易决策顾问就绪。发送任意问题开始分析——我会基于实时数据给出交易建议（入场/跳过/观望 + 市场方向 + 置信度）。";
 
+const QUICK_PHRASES = [
+  '扫描75分钟后的比赛有没有进球机会',
+  '当前哪些比赛值得关注',
+  '有没有强队落后的比赛',
+];
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(() => {
@@ -134,11 +140,21 @@ export function AiChatPanel({ className }: AiChatPanelProps) {
     el.scrollTop = el.scrollHeight;
   }, [messages, loading]);
 
+  async function sendPhrase(phrase: string) {
+    if (!phrase.trim() || loading) return;
+    setInput("");
+    return sendCore(phrase.trim());
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || loading) return;
-    setLoading(true);
     setInput("");
+    return sendCore(text);
+  }
+
+  async function sendCore(text: string) {
+    setLoading(true);
     setMessages((prev) => [...prev, { id: uid(), role: "user", content: text }]);
 
     const useAgent = agentEnabled && aiMode === "DEEPSEEK";
@@ -331,8 +347,21 @@ export function AiChatPanel({ className }: AiChatPanelProps) {
         </div>
       </div>
 
+      {/* 常用语 */}
+      <div className="flex-none px-2 pt-1.5 flex flex-wrap gap-1">
+        {QUICK_PHRASES.map((q) => (
+          <button
+            key={q}
+            type="button"
+            disabled={loading}
+            onClick={() => { setInput(q); setTimeout(() => { setInput(q); void sendPhrase(q); }, 0); }}
+            className="px-2 py-0.5 rounded-full bg-[#1a1a1a] text-[10px] text-[#888] hover:text-white hover:bg-[#222] transition-colors disabled:opacity-40 truncate max-w-[200px]"
+          >{q}</button>
+        ))}
+      </div>
+
       {/* 输入区 */}
-      <div className="flex-none border-t border-border-default px-2 py-2">
+      <div className="flex-none border-t border-border-default px-2 py-2 mt-1">
         <div className="flex items-end gap-1.5">
           <textarea
             className="flex-1 min-h-[36px] max-h-[100px] bg-bg-component border border-border-default rounded-lg px-2.5 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent-primary resize-none"

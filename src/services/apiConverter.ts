@@ -713,7 +713,8 @@ export function convertApiMatchToAdvanced(
     kickoffTime: match.fixture.date,
     startTime: match.fixture.date,
     homeTeamId,
-    varCancelled, // Add varCancelled to AdvancedMatch if needed in your type
+    varCancelled,
+    lineups: lineups && lineups.length > 0 ? lineups : undefined,
   };
 
   return advancedMatch;

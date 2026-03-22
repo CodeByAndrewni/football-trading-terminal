@@ -209,6 +209,15 @@ export interface AdvancedMatch {
   startTime?: string;          // 开赛时间（备用）
   homeTeamId?: number;         // 主队 ID（用于事件判断）
 
+  /** 双方阵容（来自 /fixtures/lineups） */
+  lineups?: {
+    team: { id: number; name: string; logo?: string };
+    formation: string;
+    startXI: { player: { id: number; name: string; number: number; pos: string; grid: string | null } }[];
+    substitutes: { player: { id: number; name: string; number: number; pos: string; grid: string | null } }[];
+    coach: { id: number; name: string; photo?: string };
+  }[];
+
   /** API-Football 扩展：预测、伤病、阵容、对战、球队赛季统计等（聚合层写入） */
   enrichment?: {
     predictions?: unknown;

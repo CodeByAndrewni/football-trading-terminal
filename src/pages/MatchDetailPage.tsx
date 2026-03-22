@@ -1,344 +1,163 @@
-// ============================================
-// 比赛详情页 - 80分钟进球概率评分系统（增强版）
-// PRODUCTION STRICT MODE - 仅使用 API-Football 真实数据
-// ============================================
+/**
+ * 比赛详情页 — 简洁数据视图
+ * 布局：头部比分 → 事件时间轴条 → 统计概览 → 子Tab（事件直播 / 双方阵容 / 攻防走势 / 积分榜）
+ */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import {
-  ArrowLeft, Star, TrendingUp, TrendingDown, Target, Clock, Zap,
-  Activity, CornerUpRight, Users, AlertTriangle, Shield, RefreshCw,
-  ChevronRight, Minus, Play, Volume2, Bell, Eye, BarChart3, WifiOff
-} from 'lucide-react';
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  ReferenceLine, Area, RadarChart, PolarGrid, PolarAngleAxis,
-  PolarRadiusAxis, Radar, AreaChart
-} from 'recharts';
-import type { AdvancedMatch, AttackEvent, Substitution } from '../data/advancedMockData';
+import { useState, useMemo } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { ArrowLeft, RefreshCw, WifiOff, AlertTriangle } from 'lucide-react';
+import type { AdvancedMatch, MatchEvent } from '../data/advancedMockData';
 import { LEAGUE_COLORS } from '../data/advancedMockData';
-import { calculateDynamicScore, type ScoreResult, type ScoringFactors } from '../services/scoringEngine';
-import { HistoryValidation } from '../components/home/HistoryValidation';
-import { SimulatedOrderPanel } from '../components/home/SimulatedOrderPanel';
-import { recordScoreSnapshot } from '../services/scoreHistory';
 import { useMatchAdvanced } from '../hooks/useMatches';
-import {
-  getScoreTextClass,
-  getScoreBgGradient,
-  getDataHealthIcon,
-  getOddsHealthIcon,
-} from '../utils/scoreVisuals';
 
-// xG历史数据类型
-interface XgHistoryPoint {
-  minute: number;
-  homeXg: number;
-  awayXg: number;
-  totalXg: number;
-  event?: string;
+// ============================================
+// Helper: format display value, show "-" when missing
+// ============================================
+function v(n: number | null | undefined): string {
+  return n != null ? String(n) : '-';
+}
+
+function pct(n: number | null | undefined): string {
+  return n != null ? `${n}%` : '-';
 }
 
 // ============================================
-// PRODUCTION STRICT MODE: 不再使用 generateMatchDetailData
-// 所有数据必须来自 API-Football
+// Position label
 // ============================================
+const POS_LABEL: Record<string, string> = {
+  G: '门将', D: '后卫', M: '中场', F: '前锋',
+};
 
+// ============================================
+// Event emoji
+// ============================================
+function eventIcon(type: string, detail?: string): string {
+  const t = type.toLowerCase();
+  const d = (detail ?? '').toLowerCase();
+  if (t === 'goal') {
+    if (d.includes('own')) return '🔴';
+    if (d.includes('penalty')) return '⚽🅿️';
+    return '⚽';
+  }
+  if (t === 'card') {
+    if (d.includes('red') || d.includes('second yellow')) return '🟥';
+    return '🟨';
+  }
+  if (t === 'subst') return '🔄';
+  if (t === 'var') return '📺';
+  return '📋';
+}
+
+// ============================================
+// Sub-tab types
+// ============================================
+type DetailTab = 'events' | 'lineups' | 'momentum' | 'standings';
+
+// ============================================
+// Page
+// ============================================
 export function MatchDetailPage() {
   const { matchId } = useParams<{ matchId: string }>();
-  const navigate = useNavigate();
-  const [isWatched, setIsWatched] = useState(false);
-  const [showAlertAnimation, setShowAlertAnimation] = useState(false);
+  const [tab, setTab] = useState<DetailTab>('events');
 
-  // 使用 React Query 获取真实数据
-  const { data: matchResult, isLoading, isFetching, refetch, error } = useMatchAdvanced(
+  const { data: matchResult, isLoading, isFetching, refetch } = useMatchAdvanced(
     matchId ? Number(matchId) : undefined,
-    { refetchInterval: 30000 } // 30秒自动刷新
+    { refetchInterval: 30000 },
   );
 
-  // 生成增强数据（添加 scoreHistory, events, statsList, xgHistory）
-  const matchData = useMemo(() => {
-    // 放宽数据源要求：只要有比赛数据就显示，不管数据源
-    if (!matchResult?.match) {
-      return null;
-    }
+  const match = matchResult?.match ?? null;
 
-    const match = matchResult.match;
-
-    // 生成评分历史（基于当前评分推算）
-    const currentScore = calculateDynamicScore(match);
-    const scoreHistory: { minute: number; score: number; event?: string }[] = [];
-
-    if (currentScore) {
-      for (let m = 60; m <= match.minute; m++) {
-        const progress = (m - 60) / (match.minute - 60 || 1);
-        const score = Math.max(30, Math.floor(currentScore.totalScore * (0.6 + progress * 0.4)));
-        scoreHistory.push({ minute: m, score });
-      }
-    }
-
-    // 生成 xG 历史趋势
-    const finalHomeXg = match.stats?.xG?.home ?? 0;
-    const finalAwayXg = match.stats?.xG?.away ?? 0;
-    const xgHistory: XgHistoryPoint[] = [];
-    for (let m = 0; m <= match.minute; m += 5) {
-      const progress = m / 90;
-      xgHistory.push({
-        minute: m,
-        homeXg: Math.round(finalHomeXg * progress * 100) / 100,
-        awayXg: Math.round(finalAwayXg * progress * 100) / 100,
-        totalXg: Math.round((finalHomeXg + finalAwayXg) * progress * 100) / 100,
-      });
-    }
-
-    // 统计数据列表
-    // 🔥 根据数据可用性构建统计列表
-    const hasStats = match.stats?._realDataAvailable === true;
-    const hasXg = finalHomeXg !== null && finalHomeXg !== undefined && finalAwayXg !== null && finalAwayXg !== undefined && (finalHomeXg > 0 || finalAwayXg > 0);
-
-    const statsList = hasStats ? [
-      { label: '射门', home: match.stats?.shots?.home ?? 0, away: match.stats?.shots?.away ?? 0 },
-      { label: '射正', home: match.stats?.shotsOnTarget?.home ?? 0, away: match.stats?.shotsOnTarget?.away ?? 0 },
-      { label: '控球率', home: match.stats?.possession?.home ?? 0, away: match.stats?.possession?.away ?? 0, suffix: '%' },
-      { label: '角球', home: match.corners?.home ?? 0, away: match.corners?.away ?? 0 },
-      // 只在有 xG 数据时显示预期进球
-      ...(hasXg ? [{ label: 'xG', home: finalHomeXg, away: finalAwayXg }] : []),
-      { label: '危险进攻', home: match.stats?.dangerousAttacks?.home ?? 0, away: match.stats?.dangerousAttacks?.away ?? 0 },
-      { label: '犯规', home: match.stats?.fouls?.home ?? 0, away: match.stats?.fouls?.away ?? 0 },
-    ] : [];
-
-    // 简化事件列表（从真实数据中提取）
-    const events: any[] = [];
-
-    return {
-      ...match,
-      scoreHistory,
-      events,
-      statsList,
-      xgHistory,
-    };
-  }, [matchResult]);
-
-  // 计算动态评分
-  const scoreResult = useMemo(() => {
-    if (!matchData) return null;
-    return calculateDynamicScore(matchData);
-  }, [matchData]);
-
-  // 手动刷新
-  const handleRefresh = useCallback(() => {
-    refetch();
-  }, [refetch]);
-
-  // 高评分预警动画
-  useEffect(() => {
-    if (scoreResult?.totalScore && scoreResult.totalScore >= 80) {
-      setShowAlertAnimation(true);
-      const timer = setTimeout(() => setShowAlertAnimation(false), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [scoreResult]);
-
-  // 记录评分快照用于历史验证
-  useEffect(() => {
-    if (matchData && scoreResult) {
-      recordScoreSnapshot(
-        matchData.id,
-        matchData.minute,
-        scoreResult.totalScore,
-        matchData.home.name,
-        matchData.away.name,
-        matchData.home.score,
-        matchData.away.score,
-        matchData.league,
-        matchData.pressure,
-        matchData.scenarioTags || []
-      );
-    }
-  }, [matchData, scoreResult]);
-
-  // ============================================
-  // NO LIVE DATA 显示 - 只有在完全无法获取比赛数据时显示
-  // ============================================
-  if (!isLoading && !matchResult?.match) {
-    return (
-      <div className="min-h-screen bg-bg-deepest flex items-center justify-center">
-        <div className="flex flex-col items-center gap-6 p-8 bg-bg-card rounded-2xl border border-border-default max-w-md text-center">
-          <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center">
-            <WifiOff className="w-10 h-10 text-red-500" />
-          </div>
-          <h2 className="text-2xl font-bold text-text-primary">无法加载比赛</h2>
-          <p className="text-text-secondary">
-            无法获取比赛数据，请稍后重试。
-          </p>
-          <div className="text-xs text-text-muted bg-bg-elevated p-3 rounded-lg font-mono">
-            数据源: {matchResult?.dataSource || 'none'}<br/>
-            错误: {(matchResult as any)?.error || 'MATCH_NOT_FOUND'}
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => refetch()}
-              className="px-4 py-2 bg-accent-primary text-white rounded-lg hover:bg-accent-primary/90 transition-colors flex items-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              重试
-            </button>
-            <Link
-              to="/"
-              className="px-4 py-2 bg-bg-elevated text-text-secondary rounded-lg hover:bg-bg-card transition-colors"
-            >
-              返回大厅
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // ---------- Loading ----------
   if (isLoading) {
     return (
       <div className="min-h-screen bg-bg-deepest flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-accent-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-text-secondary">从 API-Football 加载数据...</p>
+          <div className="w-10 h-10 border-4 border-accent-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-text-secondary text-sm">加载比赛数据…</p>
         </div>
       </div>
     );
   }
 
-  // 即使无法评分，也显示比赛基本信息
-  // scoreResult 为 null 时，页面仍会渲染，只是评分区域显示"统计不足"
-  const isUnscoreable = matchResult?.match?._unscoreable || !scoreResult;
-  const unscoreableReason = matchResult?.match?._noStatsReason || 'MISSING_STATISTICS_DATA';
-
-  // 只有完全没有比赛数据时才返回错误页面
-  if (!matchData) {
+  // ---------- Error ----------
+  if (!match) {
     return (
       <div className="min-h-screen bg-bg-deepest flex items-center justify-center">
         <div className="flex flex-col items-center gap-6 p-8 bg-bg-card rounded-2xl border border-border-default max-w-md text-center">
-          <div className="w-20 h-20 bg-yellow-500/10 rounded-full flex items-center justify-center">
-            <AlertTriangle className="w-10 h-10 text-yellow-500" />
+          <WifiOff className="w-12 h-12 text-red-500" />
+          <h2 className="text-xl font-bold text-text-primary">无法加载比赛</h2>
+          <div className="flex gap-3">
+            <button onClick={() => refetch()} className="px-4 py-2 bg-accent-primary text-white rounded-lg text-sm flex items-center gap-2">
+              <RefreshCw className="w-4 h-4" />重试
+            </button>
+            <Link to="/" className="px-4 py-2 bg-bg-elevated text-text-secondary rounded-lg text-sm">返回大厅</Link>
           </div>
-          <h2 className="text-2xl font-bold text-text-primary">无法加载比赛</h2>
-          <p className="text-text-secondary">
-            比赛数据加载失败，请稍后重试。
-          </p>
-          <Link
-            to="/"
-            className="px-4 py-2 bg-accent-primary text-white rounded-lg hover:bg-accent-primary/90 transition-colors"
-          >
-            返回大厅
-          </Link>
         </div>
       </div>
     );
   }
 
-  const leagueColor = LEAGUE_COLORS[matchData.league] || LEAGUE_COLORS.默认;
+  const leagueColor = LEAGUE_COLORS[match.league] || LEAGUE_COLORS.默认 || '#666';
+  const isLive = ['live', '1h', '2h', 'ht'].includes(match.status);
+  const minuteDisplay = match.extraMinute
+    ? `${match.minute}+${match.extraMinute}'`
+    : `${match.minute}'`;
+
+  const tabCls = (t: DetailTab) =>
+    `flex-1 py-2 text-xs font-medium text-center transition-colors ${
+      tab === t
+        ? 'text-accent-primary border-b-2 border-accent-primary'
+        : 'text-[#888] hover:text-[#ccc]'
+    }`;
 
   return (
-    <div className={`min-h-screen bg-bg-deepest ${showAlertAnimation ? 'animate-pulse' : ''}`}>
-      {/* 顶部导航 */}
-      <header className="sticky top-0 z-50 bg-bg-card/95 backdrop-blur-md border-b border-border-default">
-        <div className="max-w-[1600px] mx-auto px-4 lg:px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link to="/" className="flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors">
+    <div className="min-h-screen bg-bg-deepest">
+      {/* ====== Header ====== */}
+      <header className="sticky top-0 z-50 bg-[#0d0d0d]/95 backdrop-blur-md border-b border-[#222]">
+        <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link to="/" className="text-[#888] hover:text-white transition-colors">
               <ArrowLeft className="w-5 h-5" />
-              <span className="text-sm hidden sm:inline">返回大厅</span>
             </Link>
-            <div className="h-4 w-px bg-border-default" />
-            <span
-              className="px-2 py-0.5 rounded text-xs font-medium text-white"
-              style={{ backgroundColor: leagueColor }}
-            >
-              {matchData.league}
+            <span className="px-2 py-0.5 rounded text-[10px] font-medium text-white" style={{ backgroundColor: leagueColor }}>
+              {match.leagueShort || match.league}
             </span>
           </div>
-
-          <div className="flex items-center gap-3">
-            {/* 刷新按钮 */}
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={isFetching}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-component text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-              <span className="text-xs hidden sm:inline">
-                实时数据
-              </span>
-            </button>
-
-            {/* 关注按钮 */}
-            <button
-              type="button"
-              onClick={() => setIsWatched(!isWatched)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                isWatched
-                  ? 'bg-accent-warning/20 text-accent-warning border border-accent-warning/30'
-                  : 'bg-bg-component text-text-secondary hover:text-text-primary border border-border-default'
-              }`}
-            >
-              <Star className={`w-4 h-4 ${isWatched ? 'fill-current' : ''}`} />
-              <span className="text-sm hidden sm:inline">{isWatched ? '已关注' : '关注'}</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#1a1a1a] text-[#888] hover:text-white text-xs disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+            刷新
+          </button>
         </div>
       </header>
 
-      <div className="max-w-[1600px] mx-auto px-4 lg:px-6 py-6">
-        {/* 统计不足提示 */}
-        {isUnscoreable && (
-          <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-            <div>
-              <p className="text-yellow-500 font-medium">统计数据不足，无法计算评分</p>
-              <p className="text-sm text-text-secondary mt-1">
-                比赛基本信息可正常显示，评分功能将在数据完整后启用。
-                {unscoreableReason && <span className="text-text-muted ml-2">({unscoreableReason})</span>}
-              </p>
-              <p className="text-xs text-text-muted mt-1">
-                统计不足，不评分（{unscoreableReason}）
-              </p>
-            </div>
-          </div>
-        )}
+      <div className="max-w-4xl mx-auto">
+        {/* ====== Score Board ====== */}
+        <ScoreBoard match={match} minuteDisplay={minuteDisplay} isLive={isLive} />
 
-        {/* 比赛头部 - 比分和核心评分 */}
-        <MatchHeaderSection match={matchData} scoreResult={scoreResult} isUnscoreable={isUnscoreable} />
+        {/* ====== Event Timeline Bar ====== */}
+        <EventTimelineBar match={match} />
 
-        {/* 主要内容区域 */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 mt-6">
-          {/* 左侧：评分详情 */}
-          <div className="xl:col-span-8 space-y-6">
-            {/* 评分面板 - 仅在有评分时显示 */}
-            {scoreResult && <ScoreDashboard match={matchData} scoreResult={scoreResult} />}
+        {/* ====== Stats Overview ====== */}
+        <StatsOverview match={match} />
 
-            {/* 评分趋势图 - 仅在有评分时显示 */}
-            {scoreResult && (
-              <ScoreTrendChart
-                scoreHistory={matchData.scoreHistory}
-                currentMinute={matchData.minute}
-                currentScore={scoreResult.totalScore}
-              />
-            )}
+        {/* ====== Sub Tabs ====== */}
+        <div className="flex border-b border-[#222] mt-2">
+          <button type="button" className={tabCls('events')} onClick={() => setTab('events')}>事件直播</button>
+          <button type="button" className={tabCls('lineups')} onClick={() => setTab('lineups')}>双方阵容</button>
+          <button type="button" className={tabCls('momentum')} onClick={() => setTab('momentum')}>攻防走势</button>
+          <button type="button" className={tabCls('standings')} onClick={() => setTab('standings')}>积分榜</button>
+        </div>
 
-            {/* 进攻时间轴 */}
-            <AttackTimelineSection attacks={matchData.attacks} minute={matchData.minute} />
-
-            {/* 比赛统计 */}
-            <StatisticsSection stats={matchData.statsList} home={matchData.home} away={matchData.away} />
-          </div>
-
-          {/* 右侧：三卡片结构（决策概要 / 数据拆解 / 盘口&历史） */}
-          <div className="xl:col-span-4 space-y-6">
-            <DecisionSummaryCard
-              match={matchData}
-              scoreResult={scoreResult}
-              unscoreableReason={unscoreableReason}
-            />
-            <DataBreakdownCard match={matchData} scoreResult={scoreResult} />
-            <MarketHistoryCard match={matchData} scoreResult={scoreResult} />
-          </div>
+        <div className="px-4 py-3 pb-12">
+          {tab === 'events' && <EventsFeed match={match} />}
+          {tab === 'lineups' && <LineupsTab match={match} />}
+          {tab === 'momentum' && <MomentumTab match={match} />}
+          {tab === 'standings' && <StandingsTab match={match} />}
         </div>
       </div>
     </div>
@@ -346,1143 +165,441 @@ export function MatchDetailPage() {
 }
 
 // ============================================
-// 比赛头部区域
+// Score Board
 // ============================================
-function MatchHeaderSection({ match, scoreResult, isUnscoreable }: { match: AdvancedMatch; scoreResult: ScoreResult | null; isUnscoreable?: boolean }) {
-  const totalScore = scoreResult?.totalScore ?? 0;
-
-  const getScoreColor = () => {
-    if (isUnscoreable) return 'text-text-muted';
-    return getScoreTextClass(totalScore);
-  };
-
-  const getScoreBg = () => {
-    if (isUnscoreable) return 'from-gray-500/10 to-transparent';
-    return getScoreBgGradient(totalScore);
-  };
+function ScoreBoard({ match, minuteDisplay, isLive }: { match: AdvancedMatch; minuteDisplay: string; isLive: boolean }) {
+  const hdp = match.initialHandicap;
+  const ou = match.initialOverUnder;
+  const ht = match.halftimeScore;
 
   return (
-    <div className={`card relative overflow-hidden ${!isUnscoreable && totalScore >= 80 ? 'ring-2 ring-accent-danger/50 animate-border-breathe' : ''}`}>
-      {/* 背景渐变 */}
-      <div className={`absolute inset-0 bg-gradient-to-r ${getScoreBg()} opacity-50`} />
-
-      <div className="relative flex flex-col lg:flex-row items-center justify-between gap-6 py-6">
-        {/* 左侧：比赛信息 */}
-        <div className="flex items-center gap-6 lg:gap-10">
-          {/* 主队 */}
-          <div className="flex flex-col items-center gap-2 w-28">
-            <div className="w-16 h-16 lg:w-20 lg:h-20 rounded-2xl bg-bg-component flex items-center justify-center p-2">
-              <span className="text-2xl lg:text-3xl font-bold text-text-primary">{match.home.name.slice(0, 2)}</span>
-            </div>
-            <span className="text-sm lg:text-base font-medium text-text-primary text-center">{match.home.name}</span>
-            {(match.home.rank ?? 0) > 0 && (
-              <span className="text-xs text-text-muted">排名 #{match.home.rank}</span>
-            )}
-          </div>
-
-          {/* 比分 */}
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex items-center gap-3 lg:gap-4">
-              <span className="font-mono text-4xl lg:text-6xl font-black text-text-primary">{match.home.score}</span>
-              <div className="flex flex-col items-center">
-                <span className="text-2xl lg:text-3xl text-text-muted">:</span>
-              </div>
-              <span className="font-mono text-4xl lg:text-6xl font-black text-text-primary">{match.away.score}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-accent-success animate-pulse" />
-              <span className="font-mono text-lg lg:text-xl text-accent-success font-bold">{match.minute}'</span>
-              <span className="text-sm text-text-muted">进行中</span>
-            </div>
-          </div>
-
-          {/* 客队 */}
-          <div className="flex flex-col items-center gap-2 w-28">
-            <div className="w-16 h-16 lg:w-20 lg:h-20 rounded-2xl bg-bg-component flex items-center justify-center p-2">
-              <span className="text-2xl lg:text-3xl font-bold text-text-primary">{match.away.name.slice(0, 2)}</span>
-            </div>
-            <span className="text-sm lg:text-base font-medium text-text-primary text-center">{match.away.name}</span>
-            {(match.away.rank ?? 0) > 0 && (
-              <span className="text-xs text-text-muted">排名 #{match.away.rank}</span>
-            )}
-          </div>
-        </div>
-
-        {/* 右侧：核心评分 */}
-        <div className="flex items-center gap-6 lg:gap-8">
-          {/* 评分圆环 */}
-          <div className="relative">
-            <svg className="w-28 h-28 lg:w-36 lg:h-36 -rotate-90">
-              <circle
-                cx="50%" cy="50%" r="45%"
-                fill="none"
-                stroke="#21262d"
-                strokeWidth="8"
-              />
-              <circle
-                cx="50%" cy="50%" r="45%"
-                fill="none"
-                stroke={isUnscoreable ? '#666' : totalScore >= 80 ? '#ff4444' : totalScore >= 60 ? '#ffaa00' : '#00cc66'}
-                strokeWidth="8"
-                strokeLinecap="round"
-                strokeDasharray={isUnscoreable ? '0 283' : `${(totalScore / 100) * 283} 283`}
-                className="transition-all duration-1000"
-                style={{
-                  filter: !isUnscoreable && totalScore >= 80 ? 'drop-shadow(0 0 8px rgba(255, 68, 68, 0.6))' : 'none'
-                }}
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className={`font-mono text-3xl lg:text-4xl font-black ${getScoreColor()}`}>
-                {isUnscoreable ? '--' : totalScore}
-              </span>
-              <span className="text-[10px] lg:text-xs text-text-muted">
-                {isUnscoreable ? '统计不足' : '80+评分'}
-              </span>
-            </div>
-          </div>
-
-          {/* 评分信息 */}
-          <div className="space-y-3">
-            {/* 星级 */}
-            <div>
-              <p className="text-xs text-text-muted mb-1">评级</p>
-              <div className="flex gap-0.5">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <span
-                    key={i}
-                    className={`text-xl ${
-                      isUnscoreable
-                        ? 'text-text-muted/30'
-                        : i <= (scoreResult?.stars ?? 0)
-                          ? (scoreResult?.stars ?? 0) >= 4 ? 'text-accent-danger' : 'text-accent-warning'
-                          : 'text-text-muted/30'
-                    }`}
-                  >
-                    ★
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* 建议 */}
-            <div>
-              <p className="text-xs text-text-muted mb-1">交易建议</p>
-              {isUnscoreable ? (
-                <span className="text-sm text-text-muted">数据不足</span>
-              ) : (
-                <RecommendationBadge recommendation={scoreResult?.recommendation || 'HOLD'} />
-              )}
-            </div>
-
-            {/* 强队落后标记 */}
-            {!isUnscoreable && scoreResult?.isStrongTeamBehind && (
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-accent-danger/20 border border-accent-danger/30">
-                <Zap className="w-4 h-4 text-accent-danger" />
-                <span className="text-xs font-medium text-accent-danger">强队落后</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DecisionSummaryCard({
-  match,
-  scoreResult,
-  unscoreableReason,
-}: {
-  match: AdvancedMatch;
-  scoreResult: ScoreResult | null;
-  unscoreableReason?: string | null;
-}) {
-  const score = scoreResult?.totalScore ?? 0;
-  const scoreClass = getScoreTextClass(score);
-  const keyReasons = scoreResult?.alerts?.slice(0, 3) ?? [];
-
-  return (
-    <div className="card space-y-3">
+    <div className="px-4 py-5">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-accent-primary" />
-          <span className="font-medium text-text-primary">决策概要</span>
+        {/* Home */}
+        <div className="flex flex-col items-center gap-1.5 w-28">
+          {match.home.logo ? (
+            <img src={match.home.logo} alt="" className="w-12 h-12 object-contain" />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-[#1a1a1a] flex items-center justify-center text-lg font-bold text-white">
+              {match.home.name.slice(0, 2)}
+            </div>
+          )}
+          <span className="text-xs text-white text-center leading-tight">{match.home.name}</span>
+          {(match.home.rank ?? 0) > 0 && <span className="text-[10px] text-[#666]">#{match.home.rank}</span>}
         </div>
-        <div className="text-xs text-text-muted">{match.minute}' · {match.home.score}-{match.away.score}</div>
-      </div>
 
-      {scoreResult ? (
-        <>
-          <div className="flex items-center justify-between">
-            <div className={`font-mono text-3xl font-black ${scoreClass}`}>{score}</div>
-            <RecommendationBadge recommendation={scoreResult.recommendation} />
+        {/* Score */}
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex items-baseline gap-3">
+            <span className="font-mono text-4xl font-black text-white">{match.home.score}</span>
+            <span className="text-xl text-[#555]">-</span>
+            <span className="font-mono text-4xl font-black text-white">{match.away.score}</span>
           </div>
-          <div className="flex items-center gap-2 text-xs text-text-secondary">
-            <span title="数据健康">{getDataHealthIcon(scoreResult.dataHealthScore)}</span>
-            <span>数据 {scoreResult.dataHealthScore ?? '--'}/100</span>
-            <span className="text-text-muted">·</span>
-            <span title="盘口健康">{getOddsHealthIcon(scoreResult.oddsHealthLevel)}</span>
-            <span>
-              {scoreResult.oddsHealthScore != null ? `盘口 ${scoreResult.oddsHealthScore}/100` : '盘口未计算'}
+          <div className="flex items-center gap-1.5">
+            {isLive && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />}
+            <span className={`font-mono text-sm font-bold ${isLive ? 'text-green-400' : 'text-[#888]'}`}>
+              {isLive ? minuteDisplay : match.status === 'ft' ? '完场' : match.status === 'ht' ? '中场' : match.status}
             </span>
           </div>
-          <div className="space-y-1">
-            {keyReasons.length > 0 ? (
-              keyReasons.map((reason, i) => (
-                <div key={`${reason}-${i}`} className="text-xs text-text-secondary">
-                  • {reason}
-                </div>
-              ))
-            ) : (
-              <div className="text-xs text-text-muted">暂无关键理由</div>
-            )}
+          {/* Initial odds */}
+          <div className="flex items-center gap-2 mt-1 text-[10px] text-[#666]">
+            {hdp != null && <span>让球 {hdp > 0 ? '+' : ''}{hdp}</span>}
+            {ou != null && <span>大小 {ou}</span>}
+            {ht && <span>HT {ht.home ?? 0}-{ht.away ?? 0}</span>}
           </div>
-        </>
-      ) : (
-        <div className="text-sm text-accent-warning">
-          统计不足，当前仅展示基础信息（{unscoreableReason || 'NO_SCORE'}）
         </div>
-      )}
-    </div>
-  );
-}
 
-function DataBreakdownCard({
-  match,
-  scoreResult,
-}: {
-  match: AdvancedMatch;
-  scoreResult: ScoreResult | null;
-}) {
-  const shots = `${match.stats?.shots?.home ?? 0}-${match.stats?.shots?.away ?? 0}`;
-  const shotsOn = `${match.stats?.shotsOnTarget?.home ?? 0}-${match.stats?.shotsOnTarget?.away ?? 0}`;
-  const corners = `${match.corners?.home ?? 0}-${match.corners?.away ?? 0}`;
-  const xg = `${(match.stats?.xG?.home ?? 0).toFixed(2)}-${(match.stats?.xG?.away ?? 0).toFixed(2)}`;
-  const timelineEvents = (match.events ?? [])
-    .map((e) => ({
-      minute: e.minute ?? e.time?.elapsed ?? 0,
-      type: e.type ?? 'other',
-      team: (e.teamSide === 'away' ? 'away' : 'home') as 'home' | 'away',
-      player: e.player?.name ?? '',
-      detail: e.detail,
-    }))
-    .filter((e) => e.minute >= 0);
-
-  return (
-    <div className="card space-y-3">
-      <div className="flex items-center gap-2">
-        <BarChart3 className="w-4 h-4 text-accent-primary" />
-        <span className="font-medium text-text-primary">数据拆解</span>
+        {/* Away */}
+        <div className="flex flex-col items-center gap-1.5 w-28">
+          {match.away.logo ? (
+            <img src={match.away.logo} alt="" className="w-12 h-12 object-contain" />
+          ) : (
+            <div className="w-12 h-12 rounded-full bg-[#1a1a1a] flex items-center justify-center text-lg font-bold text-white">
+              {match.away.name.slice(0, 2)}
+            </div>
+          )}
+          <span className="text-xs text-white text-center leading-tight">{match.away.name}</span>
+          {(match.away.rank ?? 0) > 0 && <span className="text-[10px] text-[#666]">#{match.away.rank}</span>}
+        </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded bg-bg-component px-2 py-1.5 text-text-secondary">射门 <span className="font-mono text-text-primary">{shots}</span></div>
-        <div className="rounded bg-bg-component px-2 py-1.5 text-text-secondary">射正 <span className="font-mono text-text-primary">{shotsOn}</span></div>
-        <div className="rounded bg-bg-component px-2 py-1.5 text-text-secondary">角球 <span className="font-mono text-text-primary">{corners}</span></div>
-        <div className="rounded bg-bg-component px-2 py-1.5 text-text-secondary">xG <span className="font-mono text-text-primary">{xg}</span></div>
-      </div>
-      <StatsChannelPanel scoreResult={scoreResult} match={match} />
-      <EventsTimeline events={timelineEvents} />
-    </div>
-  );
-}
-
-function MarketHistoryCard({
-  match,
-  scoreResult,
-}: {
-  match: AdvancedMatch;
-  scoreResult: ScoreResult | null;
-}) {
-  return (
-    <div className="card space-y-4">
-      <div className="flex items-center gap-2">
-        <TrendingUp className="w-4 h-4 text-accent-primary" />
-        <span className="font-medium text-text-primary">盘口 & 历史（低权重参考）</span>
-      </div>
-      <OddsAnalysisPanel odds={match.odds} />
-      {scoreResult && (
-        <>
-          <HistoryValidation
-            teamName={match.home.name}
-            scenarioTags={match.scenarioTags || []}
-            pressure={match.pressure}
-            currentMinute={match.minute}
-            currentScore={scoreResult.totalScore}
-          />
-          <AlertSignalsPanel
-            alerts={scoreResult.alerts}
-            recommendation={scoreResult.recommendation}
-            isStrongTeamBehind={scoreResult.isStrongTeamBehind}
-          />
-        </>
-      )}
-      <SimulatedOrderPanel match={match} />
     </div>
   );
 }
 
 // ============================================
-// 评分仪表盘
+// Event Timeline Bar — colored flags on a horizontal time axis
 // ============================================
-function ScoreDashboard({ match, scoreResult }: { match: AdvancedMatch; scoreResult: ScoreResult }) {
-  const metrics = [
-    {
-      icon: Clock,
-      label: '比分因子',
-      value: match.home.score === match.away.score ? '平局' : Math.abs(match.home.score - match.away.score) === 1 ? '差1球' : '差2球+',
-      subValue: `${match.home.score} : ${match.away.score}`,
-      color: scoreResult.factors.scoreFactor.score >= 15 ? 'danger' : scoreResult.factors.scoreFactor.score >= 10 ? 'warning' : 'primary',
-      score: scoreResult.factors.scoreFactor.score,
-      maxScore: 25,
-    },
-    {
-      icon: Target,
-      label: '进攻因子',
-      value: `${match.attacks?.filter(a => a.minute > match.minute - 5 && a.type === 'dangerous').length ?? 0}次`,
-      subValue: '近5分钟危险进攻',
-      color: scoreResult.factors.attackFactor.score >= 20 ? 'danger' : scoreResult.factors.attackFactor.score >= 10 ? 'warning' : 'success',
-      score: scoreResult.factors.attackFactor.score,
-      maxScore: 30,
-    },
-    {
-      icon: Activity,
-      label: '动量因子',
-      value: `${match.minute}'`,
-      subValue: match.minute >= 85 ? '绝杀时段' : match.minute >= 80 ? '关键时段' : '下半场',
-      color: scoreResult.factors.momentumFactor.score >= 25 ? 'danger' : scoreResult.factors.momentumFactor.score >= 15 ? 'warning' : 'primary',
-      score: scoreResult.factors.momentumFactor.score,
-      maxScore: 35,
-    },
-    {
-      icon: Users,
-      label: '历史因子',
-      value: match.substitutions?.filter(s => s.minute >= 70 && s.type === 'attack').length > 0 ? '攻击' : '中性',
-      subValue: `${match.substitutions?.filter(s => s.minute >= 70).length ?? 0}次换人`,
-      color: scoreResult.factors.historyFactor.score >= 15 ? 'danger' : scoreResult.factors.historyFactor.score >= 8 ? 'warning' : 'muted',
-      score: scoreResult.factors.historyFactor.score,
-      maxScore: 25,
-    },
-    {
-      icon: BarChart3,
-      label: '特殊因子',
-      value: match.odds?.overUnder?.overTrend === 'down' ? '下跌' : match.odds?.overUnder?.overTrend === 'up' ? '上涨' : '稳定',
-      subValue: '大球赔率',
-      color: scoreResult.factors.specialFactor.score >= 10 ? 'success' : scoreResult.factors.specialFactor.score <= -5 ? 'danger' : 'muted',
-      score: scoreResult.factors.specialFactor.score,
-      maxScore: 20,
-    },
-    {
-      icon: CornerUpRight,
-      label: '角球数据',
-      value: `${(match.corners?.home ?? 0) + (match.corners?.away ?? 0)}`,
-      subValue: `近5分钟 +${match.corners?.recent5min ?? 0}`,
-      color: (match.corners?.recent5min ?? 0) >= 2 ? 'warning' : 'primary',
-      score: scoreResult.factors.attackFactor.details.corners,
-      maxScore: 10,
-    },
+function EventTimelineBar({ match }: { match: AdvancedMatch }) {
+  const events = match.events ?? [];
+  if (events.length === 0) {
+    return (
+      <div className="px-4 pb-2">
+        <div className="h-8 rounded bg-[#111] flex items-center justify-center text-[10px] text-[#555]">
+          暂无事件数据
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 pb-2">
+      <div className="relative h-8 bg-[#111] rounded overflow-hidden">
+        {/* Half-time marker */}
+        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[#333]" />
+        <span className="absolute left-1/2 bottom-0 -translate-x-1/2 text-[8px] text-[#555]">HT</span>
+
+        {/* Current minute marker */}
+        {match.minute > 0 && (
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-green-500/70"
+            style={{ left: `${Math.min((match.minute / 95) * 100, 100)}%` }}
+          />
+        )}
+
+        {/* Event flags */}
+        {events.map((ev, i) => {
+          const minute = ev.minute ?? ev.time?.elapsed ?? 0;
+          const x = Math.min((minute / 95) * 100, 99);
+          const isHome = ev.teamSide === 'home';
+          const t = (ev.type ?? '').toLowerCase();
+          const d = (ev.detail ?? '').toLowerCase();
+
+          let color = '#555';
+          let h = 6;
+          if (t === 'goal') { color = '#22c55e'; h = 12; }
+          else if (t === 'card' && (d.includes('red') || d.includes('second yellow'))) { color = '#ef4444'; h = 10; }
+          else if (t === 'card') { color = '#eab308'; h = 8; }
+          else if (t === 'subst') { color = '#3b82f6'; h = 6; }
+          else if (t === 'var') { color = '#a855f7'; h = 8; }
+
+          return (
+            <div
+              key={`${minute}-${i}`}
+              className="absolute w-1 rounded-sm"
+              style={{
+                left: `${x}%`,
+                height: h,
+                backgroundColor: color,
+                top: isHome ? 2 : undefined,
+                bottom: isHome ? undefined : 2,
+              }}
+              title={`${minute}' ${ev.player?.name ?? ''} ${ev.type} ${ev.detail ?? ''}`}
+            />
+          );
+        })}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center gap-3 mt-1 text-[9px] text-[#666]">
+        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-sm bg-green-500 inline-block" /> 进球</span>
+        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-sm bg-yellow-500 inline-block" /> 黄牌</span>
+        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-sm bg-red-500 inline-block" /> 红牌</span>
+        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-sm bg-blue-500 inline-block" /> 换人</span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// Stats Overview — compact two-column comparison
+// ============================================
+function StatsOverview({ match }: { match: AdvancedMatch }) {
+  const s = match.stats;
+
+  const rows: { label: string; home: string; away: string }[] = [
+    { label: '危险进攻', home: v(s?.dangerousAttacks?.home), away: v(s?.dangerousAttacks?.away) },
+    { label: '进攻', home: v(s?.attacks?.home), away: v(s?.attacks?.away) },
+    { label: '控球率', home: pct(s?.possession?.home), away: pct(s?.possession?.away) },
+    { label: 'xG', home: s?.xG?.home != null ? s.xG.home.toFixed(2) : '-', away: s?.xG?.away != null ? s.xG.away.toFixed(2) : '-' },
+    { label: '射正', home: v(s?.shotsOnTarget?.home), away: v(s?.shotsOnTarget?.away) },
+    { label: '射偏', home: v(s?.shotsOffTarget?.home), away: v(s?.shotsOffTarget?.away) },
   ];
 
-  const colorClasses: Record<string, string> = {
-    primary: 'bg-accent-primary/10 text-accent-primary border-accent-primary/30',
-    success: 'bg-accent-success/10 text-accent-success border-accent-success/30',
-    warning: 'bg-accent-warning/10 text-accent-warning border-accent-warning/30',
-    danger: 'bg-accent-danger/10 text-accent-danger border-accent-danger/30',
-    muted: 'bg-bg-component text-text-secondary border-border-default',
-  };
+  return (
+    <div className="px-4 py-2">
+      <div className="grid grid-cols-3 gap-y-1.5 text-xs">
+        {rows.map((r) => {
+          const hNum = parseFloat(r.home) || 0;
+          const aNum = parseFloat(r.away) || 0;
+          const hWin = hNum > aNum;
+          const aWin = aNum > hNum;
+          return (
+            <div key={r.label} className="contents">
+              <span className={`text-right font-mono pr-2 ${hWin ? 'text-accent-primary font-bold' : 'text-[#bbb]'}`}>{r.home}</span>
+              <span className="text-center text-[#666]">{r.label}</span>
+              <span className={`text-left font-mono pl-2 ${aWin ? 'text-red-400 font-bold' : 'text-[#bbb]'}`}>{r.away}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// Tab: Events Feed (reverse chronological)
+// ============================================
+function EventsFeed({ match }: { match: AdvancedMatch }) {
+  const events = useMemo(() => {
+    const raw = match.events ?? [];
+    return [...raw].sort((a, b) => {
+      const am = (a.minute ?? a.time?.elapsed ?? 0) + ((a.time?.extra ?? 0) / 100);
+      const bm = (b.minute ?? b.time?.elapsed ?? 0) + ((b.time?.extra ?? 0) / 100);
+      return bm - am;
+    });
+  }, [match.events]);
+
+  if (events.length === 0) {
+    return <EmptyState text="暂无事件数据" />;
+  }
 
   return (
-    <div className="card">
-      <div className="flex items-center gap-2 mb-4">
-        <Activity className="w-5 h-5 text-accent-primary" />
-        <h2 className="text-lg font-semibold text-text-primary">实时指标监控</h2>
-      </div>
+    <div className="space-y-0.5">
+      {events.map((ev, i) => {
+        const minute = ev.minute ?? ev.time?.elapsed ?? 0;
+        const extra = ev.time?.extra;
+        const mStr = extra ? `${minute}+${extra}'` : `${minute}'`;
+        const icon = eventIcon(ev.type, ev.detail);
+        const isHome = ev.teamSide === 'home';
+        const playerName = ev.player?.name ?? '';
+        const assistName = ev.assist?.name;
+        const teamName = ev.team?.name ?? (isHome ? match.home.name : match.away.name);
+        const t = (ev.type ?? '').toLowerCase();
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {metrics.map(({ icon: Icon, label, value, subValue, color, score, maxScore }) => (
+        let desc = '';
+        if (t === 'goal') desc = assistName ? `进球 (助攻: ${assistName})` : '进球';
+        else if (t === 'card') desc = ev.detail ?? '牌';
+        else if (t === 'subst') desc = `换人 ~ ${playerName} ~ ${assistName ?? ''}`;
+        else if (t === 'var') desc = ev.detail ?? 'VAR';
+        else desc = ev.detail ?? ev.type;
+
+        const subLine = t === 'subst'
+          ? `换上 ${playerName} · 换下 ${assistName ?? '?'}`
+          : `${playerName}${playerName ? ' - ' : ''}${desc}`;
+
+        return (
           <div
-            key={label}
-            className={`p-3 rounded-xl border ${colorClasses[color]} transition-all hover:scale-105`}
+            key={`${minute}-${i}`}
+            className={`flex items-start gap-2.5 px-2 py-1.5 rounded transition-colors hover:bg-[#111] ${
+              t === 'goal' ? 'bg-green-500/5' : ''
+            }`}
           >
-            <div className="flex items-center gap-2 mb-2">
-              <Icon className="w-4 h-4" />
-              <span className="text-xs opacity-80">{label}</span>
-            </div>
-            <p className="font-mono text-lg font-bold mb-1">{value}</p>
-            <p className="text-[10px] opacity-70">{subValue}</p>
-            <div className="mt-2 flex items-center gap-1">
-              <div className="flex-1 h-1 bg-black/20 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-current rounded-full transition-all duration-500"
-                  style={{ width: `${(score / maxScore) * 100}%` }}
-                />
-              </div>
-              <span className="text-[10px] font-mono">{score}/{maxScore}</span>
+            <span className="font-mono text-[11px] text-[#666] w-10 text-right flex-shrink-0 pt-0.5">{mStr}</span>
+            <span className="text-sm flex-shrink-0">{icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-[#ccc] truncate">{subLine}</div>
+              <div className="text-[10px] text-[#555] truncate">({teamName})</div>
             </div>
           </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================
+// Tab: Lineups
+// ============================================
+function LineupsTab({ match }: { match: AdvancedMatch }) {
+  const lineups = match.lineups;
+  if (!lineups || lineups.length === 0) {
+    return <EmptyState text="暂无阵容数据" />;
+  }
+
+  const home = lineups.find((l) => l.team.id === match.home.id) ?? lineups[0];
+  const away = lineups.find((l) => l.team.id === match.away.id) ?? lineups[1];
+
+  return (
+    <div className="space-y-4">
+      {/* Formations */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-accent-primary font-medium">{home?.team.name}</span>
+        <span className="text-[#666] font-mono">{home?.formation ?? '-'} vs {away?.formation ?? '-'}</span>
+        <span className="text-red-400 font-medium">{away?.team.name}</span>
+      </div>
+
+      {/* Side-by-side starting XI */}
+      <div className="grid grid-cols-2 gap-3">
+        {home && <TeamLineupList lineup={home} side="home" />}
+        {away && <TeamLineupList lineup={away} side="away" />}
+      </div>
+    </div>
+  );
+}
+
+function TeamLineupList({ lineup, side }: {
+  lineup: NonNullable<AdvancedMatch['lineups']>[number];
+  side: 'home' | 'away';
+}) {
+  const accent = side === 'home' ? 'text-accent-primary' : 'text-red-400';
+
+  return (
+    <div>
+      {/* Coach */}
+      <div className="flex items-center gap-1.5 mb-2 text-[10px] text-[#666]">
+        <span>教练:</span>
+        <span className="text-[#aaa]">{lineup.coach?.name ?? '-'}</span>
+      </div>
+
+      {/* Starting XI */}
+      <div className="text-[10px] text-[#777] mb-1 font-medium">首发 ({lineup.formation})</div>
+      <div className="space-y-0.5">
+        {lineup.startXI.map((item) => (
+          <PlayerRow key={item.player.id} player={item.player} accent={accent} />
+        ))}
+      </div>
+
+      {/* Substitutes */}
+      <div className="text-[10px] text-[#777] mt-3 mb-1 font-medium">替补</div>
+      <div className="space-y-0.5">
+        {lineup.substitutes.map((item) => (
+          <PlayerRow key={item.player.id} player={item.player} accent={accent} isSub />
         ))}
       </div>
     </div>
   );
 }
 
-// ============================================
-// 评分趋势图
-// ============================================
-function ScoreTrendChart({
-  scoreHistory,
-  currentMinute,
-  currentScore,
-}: {
-  scoreHistory: { minute: number; score: number; event?: string }[];
-  currentMinute: number;
-  currentScore: number;
+function PlayerRow({ player, accent, isSub }: {
+  player: { id: number; name: string; number: number; pos: string; grid: string | null };
+  accent: string;
+  isSub?: boolean;
 }) {
+  const posLabel = POS_LABEL[player.pos] || player.pos || '-';
+  const posColor =
+    player.pos === 'G' ? 'text-yellow-500' :
+    player.pos === 'D' ? 'text-blue-400' :
+    player.pos === 'M' ? 'text-green-400' :
+    player.pos === 'F' ? 'text-red-400' : 'text-[#666]';
+
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-accent-primary" />
-          <h2 className="text-lg font-semibold text-text-primary">评分趋势</h2>
-        </div>
-        <div className="flex items-center gap-4 text-xs">
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-0.5 bg-accent-warning" />
-            <span className="text-text-muted">买入线 (70)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-0.5 bg-accent-danger" />
-            <span className="text-text-muted">强烈买入 (80)</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="h-72">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={scoreHistory} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="scoreGradientDetail" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={currentScore >= 80 ? '#ff4444' : currentScore >= 60 ? '#ffaa00' : '#00d4ff'} stopOpacity={0.4}/>
-                <stop offset="95%" stopColor={currentScore >= 80 ? '#ff4444' : currentScore >= 60 ? '#ffaa00' : '#00d4ff'} stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <XAxis
-              dataKey="minute"
-              stroke="#484f58"
-              fontSize={11}
-              tickFormatter={(v) => `${v}'`}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis
-              stroke="#484f58"
-              fontSize={11}
-              domain={[0, 100]}
-              ticks={[0, 25, 50, 70, 80, 100]}
-              axisLine={false}
-              tickLine={false}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#161b22',
-                border: '1px solid #30363d',
-                borderRadius: '12px',
-                fontSize: '12px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-              }}
-              labelFormatter={(v) => `${v}分钟`}
-              formatter={(value) => [`${value}分`, '评分']}
-            />
-            <ReferenceLine y={70} stroke="#ffaa00" strokeDasharray="5 5" strokeOpacity={0.7} />
-            <ReferenceLine y={80} stroke="#ff4444" strokeDasharray="5 5" strokeOpacity={0.7} />
-            <ReferenceLine y={currentScore} stroke={currentScore >= 80 ? '#ff4444' : '#00d4ff'} strokeWidth={2} />
-            <Area
-              type="monotone"
-              dataKey="score"
-              stroke={currentScore >= 80 ? '#ff4444' : currentScore >= 60 ? '#ffaa00' : '#00d4ff'}
-              strokeWidth={3}
-              fill="url(#scoreGradientDetail)"
-              activeDot={{ r: 8, fill: currentScore >= 80 ? '#ff4444' : '#00d4ff', strokeWidth: 2, stroke: '#0d1117' }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* 时间轴标记 */}
-      <div className="flex justify-between mt-2 px-8 text-[10px] text-text-muted">
-        <span>60'</span>
-        <span className="text-accent-warning">70' 关注</span>
-        <span className="text-accent-warning">75' 准备</span>
-        <span className="text-accent-danger">80' 买入</span>
-        <span className="text-accent-danger font-bold">85' 绝杀</span>
-        <span>90'+</span>
-      </div>
+    <div className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[11px] ${isSub ? 'opacity-70' : ''} hover:bg-[#111]`}>
+      <span className={`font-mono w-5 text-right ${accent}`}>{player.number}</span>
+      <span className="text-[#ccc] flex-1 truncate">{player.name}</span>
+      <span className={`text-[10px] ${posColor}`}>{posLabel}</span>
     </div>
   );
 }
 
 // ============================================
-// 进攻时间轴
+// Tab: Momentum (attack timeline)
 // ============================================
-function AttackTimelineSection({ attacks, minute }: { attacks: AttackEvent[]; minute: number }) {
-  const homeAttacks = attacks?.filter(a => a.team === 'home') ?? [];
-  const awayAttacks = attacks?.filter(a => a.team === 'away') ?? [];
-  const recentDangerous = attacks?.filter(a => a.minute > minute - 10 && a.type === 'dangerous') ?? [];
+function MomentumTab({ match }: { match: AdvancedMatch }) {
+  const attacks = match.attacks ?? [];
+  if (attacks.length === 0) {
+    return <EmptyState text="暂无攻防走势数据" />;
+  }
+
+  const homeAttacks = attacks.filter((a) => a.team === 'home');
+  const awayAttacks = attacks.filter((a) => a.team === 'away');
+  const homeDangerous = homeAttacks.filter((a) => a.type === 'dangerous').length;
+  const awayDangerous = awayAttacks.filter((a) => a.type === 'dangerous').length;
 
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Zap className="w-5 h-5 text-accent-primary" />
-          <h2 className="text-lg font-semibold text-text-primary">进攻时间轴</h2>
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#111]">
+          <span className="text-[#888]">主队进攻</span>
+          <span className="font-mono text-accent-primary font-bold">{homeAttacks.length} <span className="text-[#666] font-normal">({homeDangerous} 危险)</span></span>
         </div>
-        <div className="flex items-center gap-4 text-xs">
-          <span className="text-text-muted">
-            近10分钟危险进攻: <span className="font-mono text-accent-danger font-bold">{recentDangerous.length}</span>
-          </span>
+        <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#111]">
+          <span className="text-[#888]">客队进攻</span>
+          <span className="font-mono text-red-400 font-bold">{awayAttacks.length} <span className="text-[#666] font-normal">({awayDangerous} 危险)</span></span>
         </div>
       </div>
 
-      {/* 时间轴可视化 */}
-      <div className="relative h-20 bg-bg-component rounded-xl overflow-hidden">
-        {/* 时间刻度 */}
-        <div className="absolute inset-x-0 top-1/2 h-px bg-border-default" />
+      {/* Timeline visualization */}
+      <div className="relative h-24 bg-[#111] rounded-lg overflow-hidden">
+        <div className="absolute inset-x-0 top-1/2 h-px bg-[#222]" />
+        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[#222]" />
+        <span className="absolute left-1/2 top-1 -translate-x-1/2 text-[8px] text-[#555]">HT</span>
 
-        {/* 半场标记 */}
-        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-border-default" />
-        <span className="absolute left-1/2 top-1 -translate-x-1/2 text-[10px] text-text-muted">HT</span>
-
-        {/* 最近10分钟高亮 */}
+        {/* Recent 10min highlight */}
         <div
-          className="absolute top-0 bottom-0 bg-accent-primary/10"
+          className="absolute top-0 bottom-0 bg-accent-primary/5"
           style={{
-            left: `${Math.max(0, ((minute - 10) / 90) * 100)}%`,
-            width: `${(10 / 90) * 100}%`
+            left: `${Math.max(0, ((match.minute - 10) / 95) * 100)}%`,
+            width: `${(10 / 95) * 100}%`,
           }}
         />
 
-        {/* 进攻事件 */}
-        {attacks?.map((attack, i) => {
-          const x = (attack.minute / 90) * 100;
-          const isHome = attack.team === 'home';
-          const isDangerous = attack.type === 'dangerous';
-          const isRecent = attack.minute > minute - 5;
-
+        {attacks.map((a, i) => {
+          const x = (a.minute / 95) * 100;
+          const isHome = a.team === 'home';
+          const isDangerous = a.type === 'dangerous';
           return (
             <div
-              key={`attack-${attack.minute}-${i}`}
-              className={`absolute w-1.5 transition-all ${
-                isDangerous
-                  ? isRecent ? 'h-5 animate-pulse' : 'h-4'
-                  : 'h-2'
-              } rounded-full ${
-                isDangerous ? 'bg-accent-danger' : 'bg-accent-primary/60'
-              }`}
+              key={`${a.minute}-${i}`}
+              className={`absolute w-1 rounded-sm ${isDangerous ? 'bg-accent-danger' : 'bg-accent-primary/40'}`}
               style={{
                 left: `${x}%`,
-                top: isHome ? '15%' : undefined,
-                bottom: isHome ? undefined : '15%',
+                height: isDangerous ? 16 : 6,
+                top: isHome ? 8 : undefined,
+                bottom: isHome ? undefined : 8,
               }}
-              title={`${attack.minute}' - ${attack.team === 'home' ? '主队' : '客队'} ${isDangerous ? '危险进攻' : '普通进攻'}`}
+              title={`${a.minute}' ${a.team === 'home' ? '主队' : '客队'} ${isDangerous ? '危险进攻' : '普通进攻'}`}
             />
           );
         })}
 
-        {/* 当前时间指示器 */}
-        <div
-          className="absolute top-0 bottom-0 w-0.5 bg-accent-success"
-          style={{ left: `${(minute / 90) * 100}%` }}
-        >
-          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-accent-success animate-pulse" />
-        </div>
-      </div>
-
-      {/* 统计 */}
-      <div className="grid grid-cols-2 gap-4 mt-4">
-        <div className="flex items-center justify-between p-3 rounded-lg bg-bg-deepest">
-          <span className="text-sm text-text-secondary">主队进攻</span>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-lg font-bold text-accent-primary">{homeAttacks.length}</span>
-            <span className="text-xs text-text-muted">
-              危险 <span className="text-accent-danger">{homeAttacks.filter(a => a.type === 'dangerous').length}</span>
-            </span>
+        {/* Current minute */}
+        {match.minute > 0 && (
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-green-500/70"
+            style={{ left: `${Math.min((match.minute / 95) * 100, 100)}%` }}
+          >
+            <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-green-500 animate-pulse" />
           </div>
-        </div>
-        <div className="flex items-center justify-between p-3 rounded-lg bg-bg-deepest">
-          <span className="text-sm text-text-secondary">客队进攻</span>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-lg font-bold text-accent-danger">{awayAttacks.length}</span>
-            <span className="text-xs text-text-muted">
-              危险 <span className="text-accent-danger">{awayAttacks.filter(a => a.type === 'dangerous').length}</span>
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// 因子雷达图
-// ============================================
-function FactorRadarChart({ factors }: { factors: ScoringFactors }) {
-  const data = [
-    { factor: '比分', value: Math.min((factors.scoreFactor.score / 25) * 100, 100), fullMark: 100 },
-    { factor: '进攻', value: Math.min((factors.attackFactor.score / 30) * 100, 100), fullMark: 100 },
-    { factor: '动量', value: Math.min((factors.momentumFactor.score / 35) * 100, 100), fullMark: 100 },
-    { factor: '历史', value: Math.min((factors.historyFactor.score / 25) * 100, 100), fullMark: 100 },
-    { factor: '特殊', value: Math.min(Math.max((factors.specialFactor.score + 20) / 40 * 100, 0), 100), fullMark: 100 },
-  ];
-
-  const totalScore = factors.scoreFactor.score + factors.attackFactor.score +
-    factors.momentumFactor.score + factors.historyFactor.score + factors.specialFactor.score;
-
-  return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-accent-primary" />
-          <h2 className="text-lg font-semibold text-text-primary">因子雷达</h2>
-        </div>
-        <span className={`font-mono text-lg font-bold ${
-          totalScore >= 70 ? 'text-accent-danger' : totalScore >= 50 ? 'text-accent-warning' : 'text-accent-success'
-        }`}>
-          {totalScore}/100
-        </span>
-      </div>
-
-      <div className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
-            <PolarGrid stroke="#30363d" />
-            <PolarAngleAxis
-              dataKey="factor"
-              tick={{ fill: '#8b949e', fontSize: 11 }}
-            />
-            <PolarRadiusAxis
-              angle={90}
-              domain={[0, 100]}
-              tick={{ fill: '#484f58', fontSize: 9 }}
-              axisLine={false}
-            />
-            <Radar
-              name="评分"
-              dataKey="value"
-              stroke={totalScore >= 70 ? '#ff4444' : '#00d4ff'}
-              fill={totalScore >= 70 ? '#ff4444' : '#00d4ff'}
-              fillOpacity={0.3}
-              strokeWidth={2}
-            />
-          </RadarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// 因子详情面板
-// ============================================
-function FactorBreakdownPanel({ factors }: { factors: ScoringFactors }) {
-  const factorList = [
-    { key: 'scoreFactor', label: '比分因子', value: factors.scoreFactor.score, max: 25, desc: '平局/1球差/强队落后等' },
-    { key: 'attackFactor', label: '进攻因子', value: factors.attackFactor.score, max: 30, desc: '射门/射正/角球/xG等' },
-    { key: 'momentumFactor', label: '动量因子', value: factors.momentumFactor.score, max: 35, desc: '近期进攻强度变化' },
-    { key: 'historyFactor', label: '历史因子', value: factors.historyFactor.score, max: 25, desc: '75+分钟进球率/H2H' },
-    { key: 'specialFactor', label: '特殊因子', value: Math.max(0, factors.specialFactor.score + 20), max: 40, desc: '红牌/换人/VAR等' },
-  ];
-
-  return (
-    <div className="card">
-      <div className="flex items-center gap-2 mb-4">
-        <BarChart3 className="w-5 h-5 text-accent-primary" />
-        <h2 className="text-lg font-semibold text-text-primary">因子分解</h2>
-      </div>
-
-      <div className="space-y-3">
-        {factorList.map(({ key, label, value, max, desc }) => {
-          const percentage = (value / max) * 100;
-          const colorClass = percentage >= 80 ? 'bg-accent-danger' : percentage >= 60 ? 'bg-accent-warning' : percentage >= 40 ? 'bg-accent-success' : 'bg-text-muted';
-
-          return (
-            <div key={key}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm text-text-secondary">{label}</span>
-                <span className="font-mono text-sm font-medium text-text-primary">{value}/{max}</span>
-              </div>
-              <div className="relative h-2 bg-bg-deepest rounded-full overflow-hidden">
-                <div
-                  className={`absolute inset-y-0 left-0 ${colorClass} rounded-full transition-all duration-700`}
-                  style={{ width: `${percentage}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-text-muted mt-0.5">{desc}</p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// Stats 通道评分面板（仅展示，不参与排序/信号）
-// ============================================
-function StatsChannelPanel({ scoreResult, match }: { scoreResult: ScoreResult | null; match: AdvancedMatch }) {
-  const sc = scoreResult?.statsChannel;
-
-  return (
-    <div className="card">
-      <div className="flex items-center gap-2 mb-4">
-        <BarChart3 className="w-5 h-5 text-accent-primary" />
-        <h2 className="text-lg font-semibold text-text-primary">Stats 通道评分（不含赔率/历史）</h2>
-      </div>
-
-      {sc ? (
-        <>
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-text-secondary">总分</span>
-              <span className="font-mono text-lg font-bold text-text-primary">{sc.totalScore}</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-              <div className="px-3 py-2 rounded-lg bg-bg-deepest">
-                <div className="text-text-muted text-xs">射门压制</div>
-                <div className="font-mono font-medium text-text-primary">{sc.shotsScore}</div>
-                {sc.reasons.find(r => r.includes('射门') || r.includes('xG')) && (
-                  <div className="mt-1 text-[11px] text-text-muted truncate">
-                    {sc.reasons.find(r => r.includes('射门') || r.includes('xG'))}
-                  </div>
-                )}
-              </div>
-              <div className="px-3 py-2 rounded-lg bg-bg-deepest">
-                <div className="text-text-muted text-xs">场面主动（控球）</div>
-                <div className="font-mono font-medium text-text-primary">{sc.possessionScore}</div>
-                {sc.reasons.find(r => r.includes('控球')) && (
-                  <div className="mt-1 text-[11px] text-text-muted truncate">
-                    {sc.reasons.find(r => r.includes('控球'))}
-                  </div>
-                )}
-              </div>
-              <div className="px-3 py-2 rounded-lg bg-bg-deepest">
-                <div className="text-text-muted text-xs">事件压力</div>
-                <div className="font-mono font-medium text-text-primary">{sc.eventsScore}</div>
-                {sc.reasons.find(r => r.includes('角球') || r.includes('红牌')) && (
-                  <div className="mt-1 text-[11px] text-text-muted truncate">
-                    {sc.reasons.find(r => r.includes('角球') || r.includes('红牌'))}
-                  </div>
-                )}
-              </div>
-              <div className="px-3 py-2 rounded-lg bg-bg-deepest">
-                <div className="text-text-muted text-xs">初盘兑现</div>
-                <div className="font-mono font-medium text-text-primary">{sc.lineRealizationScore}</div>
-                {sc.reasons.find(r => r.includes('盘口') || r.includes('让球')) && (
-                  <div className="mt-1 text-[11px] text-text-muted truncate">
-                    {sc.reasons.find(r => r.includes('盘口') || r.includes('让球'))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* 全局说明列表 */}
-          {sc.reasons.length > 0 && (
-            <div className="mt-2">
-              <div className="text-xs text-text-muted mb-1">综合说明</div>
-              <ul className="space-y-1 text-xs text-text-secondary">
-                {sc.reasons.map((r, i) => (
-                  <li key={i}>· {r}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* 仅 stats 无赔率提示 */}
-          {match.noOddsFromProvider && (
-            <div className="mt-3 text-xs text-accent-warning">
-              仅有 stats，无赔率（供应商未提供盘口），仅作场面参考。
-            </div>
-          )}
-
-          {/* 数据不完整提示 */}
-          {(sc.flags?.missingCoreStats || sc.flags?.missingAuxStats) && (
-            <div className="mt-1 text-xs text-accent-warning/80">
-              数据不完整，分数仅供参考。
-            </div>
-          )}
-        </>
-      ) : (
-        <p className="text-sm text-text-muted">Stats 通道不可用</p>
-      )}
-    </div>
-  );
-}
-
-// ============================================
-// 换人分析
-// ============================================
-function SubstitutionAnalysis({
-  substitutions,
-  minute,
-  signalScore,
-}: {
-  substitutions: Substitution[];
-  minute: number;
-  signalScore: number;
-}) {
-  const lateSubs = substitutions?.filter(s => s.minute >= 70) ?? [];
-  const attackSubs = lateSubs.filter(s => s.type === 'attack');
-  const defenseSubs = lateSubs.filter(s => s.type === 'defense');
-
-  return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Users className="w-5 h-5 text-accent-primary" />
-          <h2 className="text-lg font-semibold text-text-primary">换人分析</h2>
-        </div>
-        <span className={`px-2 py-0.5 rounded text-xs font-mono font-bold ${
-          signalScore >= 10 ? 'bg-accent-danger/20 text-accent-danger' : 'bg-bg-component text-text-muted'
-        }`}>
-          +{signalScore}分
-        </span>
-      </div>
-
-      {lateSubs.length > 0 ? (
-        <div className="space-y-2">
-          {lateSubs.map((sub, i) => (
-            <div
-              key={`sub-${sub.minute}-${sub.playerIn}`}
-              className={`flex items-center gap-3 p-2 rounded-lg ${
-                sub.type === 'attack' ? 'bg-accent-danger/10' : sub.type === 'defense' ? 'bg-accent-primary/10' : 'bg-bg-component'
-              }`}
-            >
-              <span className="font-mono text-xs text-text-muted w-8">{sub.minute}'</span>
-              <span className={`text-lg ${
-                sub.type === 'attack' ? '' : sub.type === 'defense' ? '' : ''
-              }`}>
-                {sub.type === 'attack' ? '🔴' : sub.type === 'defense' ? '🔵' : '⚪'}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-text-primary truncate">{sub.playerIn}</p>
-                <p className="text-xs text-text-muted truncate">← {sub.playerOut}</p>
-              </div>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                sub.type === 'attack' ? 'bg-accent-danger/20 text-accent-danger' : 'bg-accent-deepest text-text-muted'
-              }`}>
-                {sub.type === 'attack' ? '攻击' : sub.type === 'defense' ? '防守' : '中性'}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-text-muted text-center py-4">70分钟后暂无换人</p>
-      )}
-
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-border-default text-xs">
-        <span className="text-text-muted">70分钟后换人统计</span>
-        <div className="flex items-center gap-3">
-          <span className="text-accent-danger">🔴 攻击 {attackSubs.length}</span>
-          <span className="text-accent-primary">🔵 防守 {defenseSubs.length}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// 盘口分析
-// ============================================
-function OddsAnalysisPanel({ odds }: { odds: AdvancedMatch['odds'] }) {
-  const getTrendIcon = (trend: 'up' | 'down' | 'stable') => {
-    if (trend === 'up') return <TrendingUp className="w-3 h-3 text-accent-danger" />;
-    if (trend === 'down') return <TrendingDown className="w-3 h-3 text-accent-success" />;
-    return <Minus className="w-3 h-3 text-text-muted" />;
-  };
-
-  // 检查是否有赔率数据
-  const hasOdds = odds?._fetch_status === 'SUCCESS';
-
-  // 🔥 DEBUG: 盘口数据获取状态
-  console.log('[LEGACY MODE] OddsAnalysisPanel:', {
-    hasOdds,
-    fetchStatus: odds?._fetch_status,
-    source: odds?._source,
-    handicapValue: odds?.handicap?.value,
-    ouTotal: odds?.overUnder?.total,
-  });
-
-  return (
-    <div className="card">
-      <div className="flex items-center gap-2 mb-4">
-        <BarChart3 className="w-5 h-5 text-accent-primary" />
-        <h2 className="text-lg font-semibold text-text-primary">盘口分析</h2>
-      </div>
-
-      {hasOdds ? (
-        <>
-          {/* 让球盘 */}
-          <div className="p-3 rounded-lg bg-bg-component mb-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-text-muted">让球盘</span>
-              <span className="font-mono text-sm text-accent-primary">{(odds?.handicap?.value ?? 0) > 0 ? '+' : ''}{odds?.handicap?.value ?? 'N/A'}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <span className="font-mono text-sm text-text-primary">{odds?.handicap?.home?.toFixed(2) ?? 'N/A'}</span>
-                {getTrendIcon(odds?.handicap?.homeTrend ?? 'stable')}
-              </div>
-              <div className="flex items-center gap-1">
-                {getTrendIcon(odds?.handicap?.awayTrend ?? 'stable')}
-                <span className="font-mono text-sm text-text-primary">{odds?.handicap?.away?.toFixed(2) ?? 'N/A'}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* 大小球 */}
-          <div className={`p-3 rounded-lg ${odds?.overUnder?.overTrend === 'down' ? 'bg-accent-success/10 border border-accent-success/30' : 'bg-bg-component'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-text-muted">大小球</span>
-              <span className={`font-mono text-sm ${odds?.overUnder?.overTrend === 'down' ? 'text-accent-success' : 'text-accent-primary'}`}>
-                {odds?.overUnder?.total ?? 'N/A'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-text-muted">大</span>
-                <span className="font-mono text-sm text-text-primary">{odds?.overUnder?.over?.toFixed(2) ?? 'N/A'}</span>
-                {getTrendIcon(odds?.overUnder?.overTrend ?? 'stable')}
-              </div>
-              <div className="flex items-center gap-1">
-                {getTrendIcon(odds?.overUnder?.underTrend ?? 'stable')}
-                <span className="font-mono text-sm text-text-primary">{odds?.overUnder?.under?.toFixed(2) ?? 'N/A'}</span>
-                <span className="text-xs text-text-muted">小</span>
-              </div>
-            </div>
-            {odds?.overUnder?.overTrend === 'down' && (
-              <p className="text-[10px] text-accent-success mt-2">📊 大球赔率下跌，进球预期上升</p>
-            )}
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-8">
-          <div className="w-12 h-12 bg-yellow-500/10 rounded-full flex items-center justify-center mb-3">
-            <WifiOff className="w-6 h-6 text-yellow-500" />
-          </div>
-          <p className="text-text-muted text-sm">暂无盘口数据</p>
-          <p className="text-text-muted text-xs mt-1">
-            {odds?._no_data_reason || '赔率数据暂不可用'}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ============================================
-// 预警信号
-// ============================================
-function AlertSignalsPanel({
-  alerts,
-  recommendation,
-  isStrongTeamBehind,
-}: {
-  alerts: string[];
-  recommendation: ScoreResult['recommendation'];
-  isStrongTeamBehind: boolean;
-}) {
-  return (
-    <div className={`card ${alerts.length > 0 ? 'ring-1 ring-accent-danger/30' : ''}`}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className={`w-5 h-5 ${alerts.length > 0 ? 'text-accent-danger' : 'text-accent-primary'}`} />
-          <h2 className="text-lg font-semibold text-text-primary">交易信号</h2>
-        </div>
-        {alerts.length > 0 && (
-          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-accent-danger text-white text-xs font-bold animate-pulse">
-            {alerts.length}
-          </span>
         )}
       </div>
-
-      {alerts.length > 0 ? (
-        <div className="space-y-2">
-          {alerts.map((alert) => (
-            <div
-              key={`alert-${alert.slice(0, 20)}`}
-              className="flex items-start gap-2 p-3 rounded-lg bg-accent-danger/10 border border-accent-danger/30 animate-fade-in"
-            >
-              <Zap className="w-4 h-4 text-accent-danger flex-shrink-0 mt-0.5" />
-              <span className="text-sm text-text-primary">{alert}</span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-bg-component">
-          <span className="text-sm text-text-muted">暂无预警信号</span>
-        </div>
-      )}
-
-      {/* 系统建议 */}
-      <div className="mt-4 p-4 rounded-lg bg-bg-deepest">
-        <div className="flex items-center gap-2 mb-2">
-          <Bell className="w-4 h-4 text-text-muted" />
-          <p className="text-xs text-text-muted">系统建议</p>
-        </div>
-        <p className="text-sm text-text-secondary">
-          {recommendation === 'STRONG_BUY' && '🔥 当前比赛处于高进球概率区间，强烈建议关注大球方向，可考虑即时入场。'}
-          {recommendation === 'BUY' && '📈 比赛具有较好的进球潜力，建议持续关注，等待更好的入场时机。'}
-          {recommendation === 'HOLD' && '⏸️ 当前数据指标中性，建议继续观察比赛走势，暂不建议入场。'}
-          {recommendation === 'AVOID' && '⚠️ 当前进球概率较低，建议回避或关注小球方向。'}
-        </p>
-      </div>
     </div>
   );
 }
 
 // ============================================
-// 统计面板
+// Tab: Standings (from enrichment or N/A)
 // ============================================
-function StatisticsSection({
-  stats,
-  home,
-  away,
-}: {
-  stats: { label: string; home: number; away: number; suffix?: string }[];
-  home: AdvancedMatch['home'];
-  away: AdvancedMatch['away'];
-}) {
-  // 检查是否有统计数据
-  const hasStats = stats.length > 0;
+function StandingsTab({ match }: { match: AdvancedMatch }) {
+  // enrichment.teamStatsHome / teamStatsAway or enrichment.predictions may contain standings
+  // For now show a basic placeholder — data passthrough from enrichment
+  const homeRank = match.home.rank;
+  const awayRank = match.away.rank;
+
+  if (!homeRank && !awayRank) {
+    return <EmptyState text="暂无积分榜数据" />;
+  }
 
   return (
-    <div className="card">
-      <div className="flex items-center gap-2 mb-4">
-        <Users className="w-5 h-5 text-accent-primary" />
-        <h2 className="text-lg font-semibold text-text-primary">比赛统计</h2>
+    <div className="space-y-3">
+      <div className="text-xs text-[#888] mb-2">{match.league} — 当前排名</div>
+      <div className="space-y-1">
+        <RankRow name={match.home.name} rank={homeRank} side="home" />
+        <RankRow name={match.away.name} rank={awayRank} side="away" />
       </div>
+      <p className="text-[10px] text-[#555] mt-2">完整积分榜将在后续版本中接入</p>
+    </div>
+  );
+}
 
-      {hasStats ? (
-        <>
-          <div className="flex items-center justify-between mb-4 px-4">
-            <span className="text-sm font-medium text-accent-primary">{home.name}</span>
-            <span className="text-sm font-medium text-accent-danger">{away.name}</span>
-          </div>
-
-          <div className="space-y-4">
-            {stats.map(({ label, home: homeVal, away: awayVal, suffix = '' }) => {
-              const total = homeVal + awayVal || 1;
-              const homePercent = (homeVal / total) * 100;
-
-              return (
-                <div key={label}>
-                  <div className="flex items-center justify-between mb-1.5 text-sm">
-                    <span className="font-mono text-text-primary w-12 text-right">{homeVal}{suffix}</span>
-                    <span className="text-text-muted flex-1 text-center">{label}</span>
-                    <span className="font-mono text-text-primary w-12 text-left">{awayVal}{suffix}</span>
-                  </div>
-                  <div className="flex h-2 rounded-full overflow-hidden bg-bg-deepest">
-                    <div
-                      className="bg-accent-primary transition-all duration-500"
-                      style={{ width: `${homePercent}%` }}
-                    />
-                    <div
-                      className="bg-accent-danger transition-all duration-500"
-                      style={{ width: `${100 - homePercent}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-8">
-          <div className="w-12 h-12 bg-yellow-500/10 rounded-full flex items-center justify-center mb-3">
-            <AlertTriangle className="w-6 h-6 text-yellow-500" />
-          </div>
-          <p className="text-text-muted text-sm">暂无技术统计</p>
-          <p className="text-text-muted text-xs mt-1">比赛进行中，数据稍后可用</p>
-        </div>
-      )}
+function RankRow({ name, rank, side }: { name: string; rank?: number | null; side: 'home' | 'away' }) {
+  const accent = side === 'home' ? 'text-accent-primary' : 'text-red-400';
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[#111] text-xs">
+      <span className={`font-mono font-bold w-8 text-right ${accent}`}>{rank != null ? `#${rank}` : '-'}</span>
+      <span className="text-[#ccc]">{name}</span>
     </div>
   );
 }
 
 // ============================================
-// 比赛事件时间线
+// Empty state
 // ============================================
-function EventsTimeline({ events }: { events: { minute: number; type: string; team: 'home' | 'away'; player: string; detail?: string }[] }) {
-  const getEventIcon = (type: string) => {
-    switch (type) {
-      case 'goal': return '⚽';
-      case 'yellow': return '🟨';
-      case 'red': return '🟥';
-      case 'sub': return '🔄';
-      case 'corner': return '🚩';
-      case 'dangerous': return '⚠️';
-      case 'var': return '📺';
-      default: return '📋';
-    }
-  };
-
-  const getEventBg = (type: string) => {
-    switch (type) {
-      case 'goal': return 'bg-accent-success/10 border-accent-success/30';
-      case 'dangerous': return 'bg-accent-warning/10 border-accent-warning/30';
-      case 'red': return 'bg-accent-danger/10 border-accent-danger/30';
-      default: return 'bg-bg-component border-border-default';
-    }
-  };
-
+function EmptyState({ text }: { text: string }) {
   return (
-    <div className="card">
-      <div className="flex items-center gap-2 mb-4">
-        <Clock className="w-5 h-5 text-accent-primary" />
-        <h2 className="text-lg font-semibold text-text-primary">比赛事件</h2>
-      </div>
-
-      <div className="space-y-2 max-h-80 overflow-y-auto scrollbar-hide">
-        {events?.sort((a, b) => b.minute - a.minute).map((event, i) => (
-          <div
-            key={`event-${event.minute}-${event.type}-${i}`}
-            className={`flex items-center gap-3 p-2.5 rounded-lg border transition-colors ${getEventBg(event.type)}`}
-          >
-            <span className="font-mono text-xs text-text-muted w-8">{event.minute}'</span>
-            <span className="text-lg">{getEventIcon(event.type)}</span>
-            <div className="flex-1 min-w-0">
-              {event.player && <p className="text-sm text-text-primary truncate">{event.player}</p>}
-              {event.detail && <p className="text-xs text-text-muted truncate">{event.detail}</p>}
-            </div>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-              event.team === 'home' ? 'bg-accent-primary/20 text-accent-primary' : 'bg-accent-danger/20 text-accent-danger'
-            }`}>
-              {event.team === 'home' ? '主' : '客'}
-            </span>
-          </div>
-        ))}
-      </div>
+    <div className="flex flex-col items-center justify-center py-12">
+      <AlertTriangle className="w-8 h-8 text-[#333] mb-2" />
+      <p className="text-xs text-[#555]">{text}</p>
     </div>
-  );
-}
-
-// ============================================
-// 推荐徽章组件
-// ============================================
-function RecommendationBadge({ recommendation }: { recommendation: ScoreResult['recommendation'] }) {
-  const styles: Record<string, { bg: string; text: string; label: string }> = {
-    STRONG_BUY: { bg: 'bg-accent-danger/20 border-accent-danger/50', text: 'text-accent-danger', label: '强烈买入' },
-    BUY: { bg: 'bg-accent-warning/20 border-accent-warning/50', text: 'text-accent-warning', label: '建议买入' },
-    HOLD: { bg: 'bg-accent-success/20 border-accent-success/50', text: 'text-accent-success', label: '观望持有' },
-    AVOID: { bg: 'bg-text-muted/20 border-text-muted/50', text: 'text-text-muted', label: '建议回避' },
-  };
-
-  const style = styles[recommendation];
-
-  return (
-    <span className={`inline-block px-3 py-1.5 rounded-lg border text-sm font-bold ${style.bg} ${style.text}`}>
-      {style.label}
-    </span>
   );
 }
 
