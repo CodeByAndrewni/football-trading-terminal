@@ -27,6 +27,14 @@ import {
   applyRanksToMatches,
   mergeEnrichmentIntoMatches,
 } from './live-enrichment.js';
+import {
+  loadNameCache,
+  applyTranslations,
+  collectUntranslatedTeams,
+  collectUntranslatedLeagues,
+  translatePendingTeams,
+  translatePendingLeagues,
+} from './name-translator.js';
 import type { AdvancedMatch } from './aggregator.js';
 
 // ============================================
@@ -84,6 +92,9 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
 
   console.log('[Refresh] Starting on-demand refresh...');
   resetApiCallsThisCycle();
+
+  // 预加载中文名缓存（从 KV 读一次）
+  await loadNameCache().catch(() => {});
 
   try {
     // 1. 获取进行中的比赛
@@ -197,6 +208,9 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
     });
     mergeEnrichmentIntoMatches(matches, enrichmentMap);
 
+    // 应用已缓存的中文名称
+    applyTranslations(matches);
+
     // 计算评分
     for (const match of matches) {
       match.killScore = calculateBasicKillScore(match);
@@ -264,6 +278,19 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
 
     await saveMatches(matches, meta);
     await incrementApiCalls(apiCallsThisCycle);
+
+    // 异步翻译未缓存的球队/联赛名称
+    // 每次最多翻译 60 个球队（2 批 Perplexity 调用），避免 serverless 超时
+    const MAX_TEAMS_PER_CYCLE = 60;
+    const pendingTeams = collectUntranslatedTeams(fixtures as any).slice(0, MAX_TEAMS_PER_CYCLE);
+    const pendingLeagues = collectUntranslatedLeagues(fixtures as any);
+    if (pendingTeams.length > 0 || pendingLeagues.length > 0) {
+      console.log(`[NameTranslator] ${pendingTeams.length} teams, ${pendingLeagues.length} leagues pending translation`);
+      Promise.all([
+        translatePendingTeams(pendingTeams),
+        translatePendingLeagues(pendingLeagues),
+      ]).catch((e) => console.error('[NameTranslator] translation error:', e));
+    }
 
     // Fire-and-forget: persist to Supabase for historical analysis
     persistLiveToSupabase(matches).catch((e) =>
