@@ -171,21 +171,24 @@ function ScoreBoard({ match, minuteDisplay, isLive }: { match: AdvancedMatch; mi
   const hdp = match.initialHandicap;
   const ou = match.initialOverUnder;
   const ht = match.halftimeScore;
+  const mw = match.odds?.matchWinner;
 
   return (
     <div className="px-4 py-5">
       <div className="flex items-center justify-between">
         {/* Home */}
-        <div className="flex flex-col items-center gap-1.5 w-28">
+        <div className="flex flex-col items-center gap-1.5 w-32">
           {match.home.logo ? (
-            <img src={match.home.logo} alt="" className="w-12 h-12 object-contain" />
+            <img src={match.home.logo} alt="" className="w-14 h-14 object-contain" />
           ) : (
-            <div className="w-12 h-12 rounded-full bg-[#1a1a1a] flex items-center justify-center text-lg font-bold text-white">
+            <div className="w-14 h-14 rounded-full bg-[#1a1a1a] flex items-center justify-center text-xl font-bold text-white">
               {match.home.name.slice(0, 2)}
             </div>
           )}
           <span className="text-xs text-white text-center leading-tight">{match.home.name}</span>
-          {(match.home.rank ?? 0) > 0 && <span className="text-[10px] text-[#666]">#{match.home.rank}</span>}
+          <span className="text-[10px] text-[#666]">
+            {(match.home.rank ?? 0) > 0 ? `#${match.home.rank}` : '-'}
+          </span>
         </div>
 
         {/* Score */}
@@ -201,25 +204,31 @@ function ScoreBoard({ match, minuteDisplay, isLive }: { match: AdvancedMatch; mi
               {isLive ? minuteDisplay : match.status === 'ft' ? '完场' : match.status === 'ht' ? '中场' : match.status}
             </span>
           </div>
-          {/* Initial odds */}
-          <div className="flex items-center gap-2 mt-1 text-[10px] text-[#666]">
-            {hdp != null && <span>让球 {hdp > 0 ? '+' : ''}{hdp}</span>}
-            {ou != null && <span>大小 {ou}</span>}
-            {ht && <span>HT {ht.home ?? 0}-{ht.away ?? 0}</span>}
+          {ht && <span className="text-[10px] text-[#555]">HT {ht.home ?? 0}-{ht.away ?? 0}</span>}
+          {/* Initial odds row */}
+          <div className="flex items-center gap-3 mt-1.5 text-[10px]">
+            <span className="text-[#888]">初: </span>
+            <span className="text-[#aaa]">{hdp != null ? `让球 ${hdp > 0 ? '+' : ''}${hdp}` : '-'}</span>
+            <span className="text-[#555]">/</span>
+            <span className="text-[#aaa]">{ou != null ? `大小 ${ou}` : '-'}</span>
+            <span className="text-[#555]">/</span>
+            <span className="text-[#aaa]">{mw ? `${mw.home ?? '-'}/${mw.draw ?? '-'}/${mw.away ?? '-'}` : '-'}</span>
           </div>
         </div>
 
         {/* Away */}
-        <div className="flex flex-col items-center gap-1.5 w-28">
+        <div className="flex flex-col items-center gap-1.5 w-32">
           {match.away.logo ? (
-            <img src={match.away.logo} alt="" className="w-12 h-12 object-contain" />
+            <img src={match.away.logo} alt="" className="w-14 h-14 object-contain" />
           ) : (
-            <div className="w-12 h-12 rounded-full bg-[#1a1a1a] flex items-center justify-center text-lg font-bold text-white">
+            <div className="w-14 h-14 rounded-full bg-[#1a1a1a] flex items-center justify-center text-xl font-bold text-white">
               {match.away.name.slice(0, 2)}
             </div>
           )}
           <span className="text-xs text-white text-center leading-tight">{match.away.name}</span>
-          {(match.away.rank ?? 0) > 0 && <span className="text-[10px] text-[#666]">#{match.away.rank}</span>}
+          <span className="text-[10px] text-[#666]">
+            {(match.away.rank ?? 0) > 0 ? `#${match.away.rank}` : '-'}
+          </span>
         </div>
       </div>
     </div>
@@ -227,36 +236,79 @@ function ScoreBoard({ match, minuteDisplay, isLive }: { match: AdvancedMatch; mi
 }
 
 // ============================================
-// Event Timeline Bar — colored flags on a horizontal time axis
+// Event Timeline Bar — larger, with time labels for key events
 // ============================================
 function EventTimelineBar({ match }: { match: AdvancedMatch }) {
   const events = match.events ?? [];
   if (events.length === 0) {
     return (
-      <div className="px-4 pb-2">
-        <div className="h-8 rounded bg-[#111] flex items-center justify-center text-[10px] text-[#555]">
+      <div className="px-4 pb-3">
+        <div className="h-14 rounded-lg bg-[#111] flex items-center justify-center text-[11px] text-[#555]">
           暂无事件数据
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="px-4 pb-2">
-      <div className="relative h-8 bg-[#111] rounded overflow-hidden">
-        {/* Half-time marker */}
-        <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[#333]" />
-        <span className="absolute left-1/2 bottom-0 -translate-x-1/2 text-[8px] text-[#555]">HT</span>
+  // Filter key events that get time labels (goals, red cards, VAR goals cancelled)
+  const keyEvents = events.filter((ev) => {
+    const t = (ev.type ?? '').toLowerCase();
+    const d = (ev.detail ?? '').toLowerCase();
+    if (t === 'goal') return true;
+    if (t === 'card' && (d.includes('red') || d.includes('second yellow'))) return true;
+    return false;
+  });
 
-        {/* Current minute marker */}
+  return (
+    <div className="px-4 pb-3">
+      {/* Time labels above the bar */}
+      <div className="relative h-5 mb-0.5">
+        {keyEvents.map((ev, i) => {
+          const minute = ev.minute ?? ev.time?.elapsed ?? 0;
+          const extra = ev.time?.extra;
+          const x = Math.min((minute / 95) * 100, 98);
+          const t = (ev.type ?? '').toLowerCase();
+          const d = (ev.detail ?? '').toLowerCase();
+          const isGoal = t === 'goal';
+          const isRed = t === 'card' && (d.includes('red') || d.includes('second yellow'));
+          const color = isGoal ? 'text-green-400' : 'text-red-400';
+          const icon = isGoal ? '⚽' : '🟥';
+          const mStr = extra ? `${minute}+${extra}'` : `${minute}'`;
+          return (
+            <span
+              key={`label-${minute}-${i}`}
+              className={`absolute text-[9px] font-mono ${color} -translate-x-1/2 whitespace-nowrap`}
+              style={{ left: `${x}%`, top: 0 }}
+            >
+              {icon}{mStr}
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Main bar */}
+      <div className="relative h-10 bg-[#111] rounded-lg overflow-hidden">
+        {/* Time scale marks: 0, 15, 30, HT, 60, 75, 90 */}
+        {[0, 15, 30, 45, 60, 75, 90].map((m) => (
+          <div key={m} className="absolute top-0 bottom-0" style={{ left: `${(m / 95) * 100}%` }}>
+            <div className={`h-full ${m === 45 ? 'w-px bg-[#444]' : 'w-px bg-[#1a1a1a]'}`} />
+            <span className="absolute -bottom-3.5 -translate-x-1/2 text-[8px] text-[#444] font-mono">
+              {m === 45 ? 'HT' : m}
+            </span>
+          </div>
+        ))}
+
+        {/* Current minute indicator */}
         {match.minute > 0 && (
           <div
-            className="absolute top-0 bottom-0 w-0.5 bg-green-500/70"
+            className="absolute top-0 bottom-0 w-0.5 bg-green-500/80 z-10"
             style={{ left: `${Math.min((match.minute / 95) * 100, 100)}%` }}
-          />
+          >
+            <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-green-500" />
+          </div>
         )}
 
-        {/* Event flags */}
+        {/* Event markers */}
         {events.map((ev, i) => {
           const minute = ev.minute ?? ev.time?.elapsed ?? 0;
           const x = Math.min((minute / 95) * 100, 99);
@@ -264,20 +316,22 @@ function EventTimelineBar({ match }: { match: AdvancedMatch }) {
           const t = (ev.type ?? '').toLowerCase();
           const d = (ev.detail ?? '').toLowerCase();
 
-          let color = '#555';
-          let h = 6;
-          if (t === 'goal') { color = '#22c55e'; h = 12; }
-          else if (t === 'card' && (d.includes('red') || d.includes('second yellow'))) { color = '#ef4444'; h = 10; }
-          else if (t === 'card') { color = '#eab308'; h = 8; }
-          else if (t === 'subst') { color = '#3b82f6'; h = 6; }
-          else if (t === 'var') { color = '#a855f7'; h = 8; }
+          let color = '#444';
+          let w = 2;
+          let h = 8;
+          if (t === 'goal') { color = '#22c55e'; w = 3; h = 16; }
+          else if (t === 'card' && (d.includes('red') || d.includes('second yellow'))) { color = '#ef4444'; w = 3; h = 14; }
+          else if (t === 'card') { color = '#eab308'; w = 2; h = 10; }
+          else if (t === 'subst') { color = '#3b82f6'; w = 2; h = 8; }
+          else if (t === 'var') { color = '#a855f7'; w = 2; h = 10; }
 
           return (
             <div
-              key={`${minute}-${i}`}
-              className="absolute w-1 rounded-sm"
+              key={`ev-${minute}-${i}`}
+              className="absolute rounded-sm z-[5]"
               style={{
                 left: `${x}%`,
+                width: w,
                 height: h,
                 backgroundColor: color,
                 top: isHome ? 2 : undefined,
@@ -288,12 +342,15 @@ function EventTimelineBar({ match }: { match: AdvancedMatch }) {
           );
         })}
       </div>
-      {/* Legend */}
-      <div className="flex items-center gap-3 mt-1 text-[9px] text-[#666]">
-        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-sm bg-green-500 inline-block" /> 进球</span>
-        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-sm bg-yellow-500 inline-block" /> 黄牌</span>
-        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-sm bg-red-500 inline-block" /> 红牌</span>
-        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-sm bg-blue-500 inline-block" /> 换人</span>
+
+      {/* Bottom scale space + Legend */}
+      <div className="flex items-center justify-between mt-4">
+        <div className="flex items-center gap-3 text-[10px] text-[#666]">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-500 inline-block" /> 进球</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-yellow-500 inline-block" /> 黄牌</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-500 inline-block" /> 红牌</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-500 inline-block" /> 换人</span>
+        </div>
       </div>
     </div>
   );
