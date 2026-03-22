@@ -379,14 +379,16 @@ export async function executeAgentTool(args: {
 
 export function getDefaultMaxFootballCalls(): number {
   const raw = process.env.AI_AGENT_MAX_FOOTBALL_CALLS;
-  const n = raw ? Number.parseInt(raw, 10) : 20;
-  if (!Number.isFinite(n) || n < 1) return 20;
-  return Math.min(n, 50);
+  const n = raw ? Number.parseInt(raw, 10) : 80;
+  if (!Number.isFinite(n) || n < 1) return 80;
+  /** 上限放宽：高配额用户可通过环境变量提高；仍设硬顶防止配置错误刷爆 */
+  return Math.min(n, 200);
 }
 
 export function getDefaultMaxToolRounds(): number {
   const raw = process.env.AI_AGENT_MAX_TOOL_ROUNDS;
-  const n = raw ? Number.parseInt(raw, 10) : 4;
-  if (!Number.isFinite(n) || n < 1) return 4;
-  return Math.min(n, 8);
+  const n = raw ? Number.parseInt(raw, 10) : 16;
+  if (!Number.isFinite(n) || n < 1) return 16;
+  /** 此前硬编码 max=8 会导致即使用户提高 env 仍卡在 8 轮，易拿不到最终回答 */
+  return Math.min(n, 64);
 }

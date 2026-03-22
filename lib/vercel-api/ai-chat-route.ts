@@ -201,6 +201,8 @@ async function callDeepSeekChat(args: {
   tools?: typeof AI_AGENT_TOOLS;
   temperature?: number;
   timeoutMs?: number;
+  /** 输出 token 上限；不设则由模型默认 */
+  maxTokens?: number;
 }): Promise<
   | { ok: true; content: string; message: Record<string, unknown> }
   | { ok: false; status: number; error: unknown }
@@ -215,6 +217,9 @@ async function callDeepSeekChat(args: {
       temperature: typeof args.temperature === 'number' ? args.temperature : 0.6,
       stream: false,
     };
+    if (typeof args.maxTokens === 'number' && args.maxTokens > 0) {
+      body.max_tokens = args.maxTokens;
+    }
     if (args.tools && args.tools.length > 0) {
       body.tools = args.tools;
       body.tool_choice = 'auto';
@@ -387,6 +392,9 @@ async function runAgentChat(
   const quota = createFootballQuota(getDefaultMaxFootballCalls());
   const maxRounds = getDefaultMaxToolRounds();
   let toolRounds = 0;
+  const agentTimeoutMs = Number(process.env.AI_AGENT_DEEPSEEK_TIMEOUT_MS ?? '180000');
+  const rawMaxTok = Number(process.env.AI_AGENT_MAX_OUTPUT_TOKENS ?? '8192');
+  const agentMaxOutTokens = Number.isFinite(rawMaxTok) && rawMaxTok > 0 ? rawMaxTok : 8192;
 
   const journalRows = await fetchJournalForPrompt({
     days: args.journalDays,
@@ -425,6 +433,8 @@ async function runAgentChat(
       apiKey: args.deepseekKey,
       messages,
       tools: AI_AGENT_TOOLS,
+      timeoutMs: agentTimeoutMs,
+      maxTokens: agentMaxOutTokens,
     });
 
     if (!resp.ok) {
@@ -472,13 +482,41 @@ async function runAgentChat(
     toolRounds++;
   }
 
+  // 最后一轮若仍是 tool_calls，循环会结束且无正文；再请求一次「无工具」强制产出最终回答
+  if (!lastAssistantText || (typeof lastAssistantText === 'string' && !lastAssistantText.trim())) {
+    const finalTimeout = Number(process.env.AI_AGENT_FINAL_TIMEOUT_MS ?? '180000');
+    const finalResp = await callDeepSeekChat({
+      apiKey: args.deepseekKey,
+      messages: [
+        ...messages,
+        {
+          role: 'user',
+          content:
+            '请根据上述工具返回的数据，直接输出对用户的最终分析（Markdown）。不要输出 JSON。',
+        },
+      ],
+      temperature: 0.6,
+      timeoutMs: finalTimeout,
+      maxTokens: agentMaxOutTokens,
+    });
+    if (finalResp.ok) {
+      const msg = finalResp.message;
+      const tc = msg.tool_calls as OpenAiToolCall[] | undefined;
+      if (!tc || !Array.isArray(tc) || tc.length === 0) {
+        const c = typeof msg.content === 'string' ? msg.content : '';
+        const fromMsg = c.trim();
+        lastAssistantText = fromMsg || finalResp.content || null;
+      }
+    }
+  }
+
   const limitations: string[] = [`本请求 API-Football 调用次数：${quota.used}/${quota.max}`];
 
-  if (!lastAssistantText) {
+  if (!lastAssistantText || (typeof lastAssistantText === 'string' && !lastAssistantText.trim())) {
     res.status(200).json({
       success: true,
       answer:
-        '未在允许轮次内得到最终文本回答（可能仍在工具循环中）。可缩小问题或提高 AI_AGENT_MAX_TOOL_ROUNDS。',
+        '未在允许轮次内得到最终文本回答。可提高 AI_AGENT_MAX_TOOL_ROUNDS（默认已放宽），或稍后重试。',
       usedMatchIds: [],
       limitations,
       debug: { reason: 'AGENT_NO_FINAL_MESSAGE' },
