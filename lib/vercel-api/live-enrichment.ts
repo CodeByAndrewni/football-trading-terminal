@@ -70,6 +70,7 @@ export interface FixtureEnrichment {
 
 const defaultBatch = Number(process.env.LIVE_ENRICHMENT_BATCH_SIZE ?? '6');
 const defaultDelay = Number(process.env.LIVE_ENRICHMENT_DELAY_MS ?? '40');
+const highLoadThreshold = Number(process.env.LIVE_ENRICHMENT_HIGH_LOAD_THRESHOLD ?? '80');
 
 async function sleep(ms: number) {
   await new Promise((r) => setTimeout(r, ms));
@@ -93,10 +94,17 @@ async function getTeamStatsCached(teamId: number, leagueId: number, season: numb
  */
 export async function enrichFixtures(
   fixtures: Match[],
-  options?: { batchSize?: number; delayMs?: number },
+  options?: { batchSize?: number; delayMs?: number; highLoad?: boolean },
 ): Promise<Map<number, FixtureEnrichment>> {
-  const batchSize = options?.batchSize ?? defaultBatch;
-  const delayMs = options?.delayMs ?? defaultDelay;
+  const highLoad =
+    options?.highLoad === true ||
+    (options?.highLoad !== false && fixtures.length >= highLoadThreshold);
+  let batchSize = options?.batchSize ?? defaultBatch;
+  let delayMs = options?.delayMs ?? defaultDelay;
+  if (highLoad && options?.batchSize === undefined) {
+    batchSize = Math.min(batchSize, 3);
+    delayMs = Math.max(delayMs, 100);
+  }
   const out = new Map<number, FixtureEnrichment>();
 
   if (process.env.LIVE_ENRICHMENT_ENABLED === 'false') {
@@ -161,14 +169,21 @@ export async function enrichFixtures(
 /** 拉取所有 live 场次涉及联赛的积分榜（去重），返回 leagueId:season -> 排名表 */
 export async function fetchStandingsForLiveFixtures(
   fixtures: Match[],
+  options?: { delayBetweenLeaguesMs?: number },
 ): Promise<Map<string, TeamRankMap>> {
+  const leagueDelay =
+    options?.delayBetweenLeaguesMs ??
+    Number(process.env.STANDINGS_LEAGUE_DELAY_MS ?? '90');
   const unique = new Map<string, { leagueId: number; season: number }>();
   for (const f of fixtures) {
     const k = `${f.league.id}:${f.league.season}`;
     if (!unique.has(k)) unique.set(k, { leagueId: f.league.id, season: f.league.season });
   }
   const out = new Map<string, TeamRankMap>();
+  let first = true;
   for (const [k, { leagueId, season }] of unique) {
+    if (!first && leagueDelay > 0) await sleep(leagueDelay);
+    first = false;
     const ranks = await getStandingsRanksCached(leagueId, season);
     if (ranks && ranks.size > 0) out.set(k, ranks);
   }

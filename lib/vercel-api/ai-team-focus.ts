@@ -24,4 +24,31 @@ export const TEAM_NAME_COMPACT_SNIPPETS: Record<string, string> = {
   国米: 'inter',
   AC米兰: 'acmilan',
   曼联队: 'manchesterunited',
+  凯尔特人: 'celtic',
+  邓迪联: 'dundee',
+  流浪者: 'rangers',
 };
+
+/** 队名单词级匹配（支持 Utd/United、多词队名），用于从用户话里解析焦点场次 */
+function tokenMatchesInMessage(token: string, lower: string): boolean {
+  if (token.length < 3) return false;
+  if (lower.includes(token)) return true;
+  if (token === 'united' || token === 'utd') {
+    return lower.includes('utd') || lower.includes('united');
+  }
+  return false;
+}
+
+export function teamNameMatchesLoose(teamName: string, message: string): boolean {
+  const lower = message.toLowerCase();
+  const tokens = teamName
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length >= 3);
+  if (tokens.length === 0) return false;
+  return tokens.every((t) => tokenMatchesInMessage(t, lower));
+}
+
+export function teamPairMatchesMessage(homeName: string, awayName: string, message: string): boolean {
+  return teamNameMatchesLoose(homeName, message) && teamNameMatchesLoose(awayName, message);
+}

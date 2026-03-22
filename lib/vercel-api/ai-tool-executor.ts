@@ -28,13 +28,18 @@ export const AI_AGENT_TOOLS: Array<{
     function: {
       name: 'kv_list_live_matches',
       description:
-        '读取 Vercel KV 中缓存的 live 聚合比赛列表（若已配置 KV）。包含 cacheAge、每场 id/队名/比分/分钟/killScore 等摘要。无 KV 或缓存为空时返回说明。',
+        '读取 Vercel KV 中缓存的 live 聚合比赛列表（若已配置 KV）。按 killScore 降序；可先 search 再取前 maxItems。总数 totalInCache 可能远大于返回条数。',
       parameters: {
         type: 'object',
         properties: {
           maxItems: {
             type: 'integer',
-            description: '最多返回多少场摘要，默认 25，最大 40',
+            description: '最多返回多少场摘要，默认 25，最大 80',
+          },
+          search: {
+            type: 'string',
+            description:
+              '可选。在主队名、客队名、联赛名中子串过滤（不区分大小写）；多个词须全部命中。用于点名某场（如 dundee celtic）',
           },
         },
       },
@@ -125,6 +130,48 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+function slimKvMatchRow(m: unknown): Record<string, unknown> {
+  const row = m as Record<string, unknown>;
+  const home = row.home as { name?: string } | undefined;
+  const away = row.away as { name?: string } | undefined;
+  const homeTeam =
+    (typeof row.homeTeam === 'string' ? row.homeTeam : '') || home?.name || '';
+  const awayTeam =
+    (typeof row.awayTeam === 'string' ? row.awayTeam : '') || away?.name || '';
+  return {
+    id: row.id,
+    homeTeam,
+    awayTeam,
+    score: row.score,
+    minute: row.minute,
+    league: row.league,
+    killScore: row.killScore,
+    totalScore: row.totalScore,
+  };
+}
+
+function sortKvMatchesByKillScore(rows: unknown[]): unknown[] {
+  return [...rows].sort((a, b) => {
+    const ra = a as Record<string, unknown>;
+    const rb = b as Record<string, unknown>;
+    return (Number(rb.killScore) || 0) - (Number(ra.killScore) || 0);
+  });
+}
+
+function kvMatchesSearchFilter(rows: unknown[], searchRaw: string): unknown[] {
+  const terms = searchRaw
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length >= 2);
+  if (terms.length === 0) return rows;
+  return rows.filter((m) => {
+    const s = slimKvMatchRow(m);
+    const blob = `${s.homeTeam} ${s.awayTeam} ${String(s.league ?? '')}`.toLowerCase();
+    return terms.every((t) => blob.includes(t));
+  });
+}
+
 function safeFixtureId(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v) && v > 0 && v < 2_000_000_000) {
     return Math.floor(v);
@@ -197,7 +244,9 @@ export async function executeAgentTool(args: {
             }),
           };
         }
-        const maxItems = clamp(typeof obj.maxItems === 'number' ? obj.maxItems : 25, 1, 40);
+        const maxItems = clamp(typeof obj.maxItems === 'number' ? obj.maxItems : 25, 1, 80);
+        const search =
+          typeof obj.search === 'string' ? obj.search.trim() : '';
         const kv = await getMatches();
         if (!kv || !Array.isArray(kv.matches) || kv.matches.length === 0) {
           return {
@@ -206,30 +255,27 @@ export async function executeAgentTool(args: {
               available: true,
               cacheAgeSeconds: kv?.cacheAge ?? null,
               count: 0,
+              totalInCache: 0,
               matches: [],
               message: 'KV 已配置但当前缓存为空，可先请求 /api/matches 刷新或改用 apifootball_get_fixtures。',
             }),
           };
         }
-        const matches = kv.matches.slice(0, maxItems).map((m: unknown) => {
-          const row = m as Record<string, unknown>;
-          return {
-            id: row.id,
-            homeTeam: row.homeTeam,
-            awayTeam: row.awayTeam,
-            score: row.score,
-            minute: row.minute,
-            league: row.league,
-            killScore: row.killScore,
-            totalScore: row.totalScore,
-          };
-        });
+        const totalInCache = kv.matches.length;
+        let pool = sortKvMatchesByKillScore(kv.matches);
+        if (search) {
+          pool = kvMatchesSearchFilter(pool, search);
+        }
+        const matches = pool.slice(0, maxItems).map((m: unknown) => slimKvMatchRow(m));
         return {
           ok: true,
           content: JSON.stringify({
             available: true,
             cacheAgeSeconds: kv.cacheAge,
             count: matches.length,
+            totalInCache,
+            search: search || undefined,
+            matchedBeforeSlice: pool.length,
             matches,
           }),
         };

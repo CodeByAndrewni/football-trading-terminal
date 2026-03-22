@@ -22,7 +22,10 @@ import {
   getDefaultMaxFootballCalls,
   getDefaultMaxToolRounds,
 } from './ai-tool-executor.js';
-import { TEAM_NAME_COMPACT_SNIPPETS } from './ai-team-focus.js';
+import {
+  TEAM_NAME_COMPACT_SNIPPETS,
+  teamPairMatchesMessage,
+} from './ai-team-focus.js';
 
 const DEEPSEEK_CHAT_ENDPOINT =
   process.env.DEEPSEEK_CHAT_URL ?? 'https://api.deepseek.com/chat/completions';
@@ -81,6 +84,11 @@ function resolveFocusFixtureId(
     const id = parseInt(hashId[1], 10);
     if (matches.some((m) => m.id === id)) return id;
   }
+
+  const pairHits = matches.filter((m) =>
+    teamPairMatchesMessage(m.home.name, m.away.name, message),
+  );
+  if (pairHits.length === 1) return pairHits[0].id;
 
   const compact = message.replace(/\s+/g, '');
   const lower = message.toLowerCase();
@@ -393,7 +401,7 @@ async function runAgentChat(
   const systemPrompt = [
     '【角色】滚球大球（Over）与 Late Goal（70\'后进球）决策顾问。用户主打大球与后段进球；不要主动推荐小球 Under 作为主攻。',
     '',
-    '【数据来源】工具：KV 为 live 聚合；API-Football 为实时接口。未调用工具则无数据。',
+    '【数据来源】工具：KV 为 live 聚合（已含全部分页 live）；kv_list 可按 killScore 排序，点名某场时传 search=队名关键词。API-Football 为实时接口。未调用工具则无数据。',
     '【记忆】长期判断见 ai_trade_journal。',
     '',
     '【逻辑】后段易出球：体能降、防守松、落后压上、换人攻、反击空间等。勿编造具体百分比。',

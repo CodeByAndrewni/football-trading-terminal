@@ -114,16 +114,15 @@ export function resetApiCallsThisCycle(): void {
 // 基础请求方法
 // ============================================
 
-async function fetchAPI<T>(
+async function fetchAPIRaw<T>(
   endpoint: string,
-  params: Record<string, string> = {}
-): Promise<T> {
+  params: Record<string, string> = {},
+): Promise<APIResponse<T>> {
   const apiKey = process.env.FOOTBALL_API_KEY;
 
   if (!apiKey) {
     throw new Error('FOOTBALL_API_KEY not configured');
   }
-
 
   const url = new URL(`${API_BASE_URL}${endpoint}`);
   for (const [key, value] of Object.entries(params)) {
@@ -149,6 +148,14 @@ async function fetchAPI<T>(
     throw new Error(`API-Football errors: ${JSON.stringify(data.errors)}`);
   }
 
+  return data;
+}
+
+async function fetchAPI<T>(
+  endpoint: string,
+  params: Record<string, string> = {},
+): Promise<T> {
+  const data = await fetchAPIRaw<T>(endpoint, params);
   return data.response;
 }
 
@@ -157,10 +164,28 @@ async function fetchAPI<T>(
 // ============================================
 
 /**
- * 获取所有进行中的比赛
+ * 获取所有进行中的比赛（分页拉齐；仅取第一页时 live 很多会漏后半部分联赛）
  */
 export async function getLiveFixtures(): Promise<Match[]> {
-  return fetchAPI<Match[]>('/fixtures', { live: 'all' });
+  const all: Match[] = [];
+  let page = 1;
+  let totalPages = 1;
+  for (;;) {
+    const raw = await fetchAPIRaw<Match[]>('/fixtures', { live: 'all', page: String(page) });
+    const chunk = Array.isArray(raw.response) ? raw.response : [];
+    all.push(...chunk);
+    totalPages = typeof raw.paging?.total === 'number' ? raw.paging.total : 1;
+    if (page >= totalPages || chunk.length === 0) break;
+    page++;
+    if (page > 100) {
+      console.warn('[getLiveFixtures] safety cap at page 100');
+      break;
+    }
+  }
+  if (totalPages > 1) {
+    console.log(`[getLiveFixtures] ${totalPages} page(s), ${all.length} fixtures`);
+  }
+  return all;
 }
 
 /**

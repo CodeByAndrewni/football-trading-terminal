@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/matches",
-      "schedule": "* * * * *"
+      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/supabase-heartbeat",

@@ -34,13 +34,45 @@ import type { AdvancedMatch } from './aggregator.js';
 // ============================================
 
 const CONFIG = {
-  CACHE_TTL: 15,              // 缓存有效期（秒） - 15秒内视为新鲜
+  CACHE_TTL: 18,              // 缓存有效期（秒） - 略增以减少高峰并发刷新
   STALE_TTL: 60,             // 最大允许返回的旧数据年龄（秒） - 60秒内允许作为旧数据返回
+  /** 超过该场次数视为高峰（周末夜间），收紧 batch 与阶段间隔，减轻 API-Football 429 */
+  HIGH_LOAD_LIVE_THRESHOLD: Number(process.env.MATCHES_REFRESH_HIGH_LOAD_THRESHOLD ?? '80'),
+  /** 阶段间 pause（ms），避免 stats/events 与 odds 同时打满瞬时配额 */
+  PHASE_GAP_MS: Number(process.env.MATCHES_REFRESH_PHASE_GAP_MS ?? '120'),
   STATS_BATCH_SIZE: 10,
   STATS_BATCH_DELAY: 30,
   ODDS_BATCH_SIZE: 8,
   ODDS_BATCH_DELAY: 50,
+  // 高峰时默认更保守（可被 HIGH_LOAD 覆盖）
+  STATS_BATCH_SIZE_HIGH: 5,
+  STATS_BATCH_DELAY_HIGH: 100,
+  ODDS_BATCH_SIZE_HIGH: 4,
+  ODDS_BATCH_DELAY_HIGH: 160,
 };
+
+function getRefreshBatchConfig(liveCount: number) {
+  if (liveCount >= CONFIG.HIGH_LOAD_LIVE_THRESHOLD) {
+    return {
+      statsBatchSize: CONFIG.STATS_BATCH_SIZE_HIGH,
+      statsDelay: CONFIG.STATS_BATCH_DELAY_HIGH,
+      oddsBatchSize: CONFIG.ODDS_BATCH_SIZE_HIGH,
+      oddsDelay: CONFIG.ODDS_BATCH_DELAY_HIGH,
+    };
+  }
+  return {
+    statsBatchSize: CONFIG.STATS_BATCH_SIZE,
+    statsDelay: CONFIG.STATS_BATCH_DELAY,
+    oddsBatchSize: CONFIG.ODDS_BATCH_SIZE,
+    oddsDelay: CONFIG.ODDS_BATCH_DELAY,
+  };
+}
+
+function phaseGap(): Promise<void> {
+  const ms = CONFIG.PHASE_GAP_MS;
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 // ============================================
 // 刷新数据函数
@@ -78,26 +110,37 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
       .filter(f => liveStatuses.includes(f.fixture.status.short))
       .map(f => f.fixture.id);
 
-    // 2. 并行：统计、事件、赔率（赛前覆盖全部场次）、各联赛积分榜（KV 长缓存）
-    const [statisticsMap, eventsMap, liveOddsMap, prematchOddsMap, leagueSeasonRanks] = await Promise.all([
+    const bc = getRefreshBatchConfig(liveFixtureIds.length);
+    if (liveFixtureIds.length >= CONFIG.HIGH_LOAD_LIVE_THRESHOLD) {
+      console.log(
+        `[Refresh] High load: ${liveFixtureIds.length} live fixtures — using throttled batch (stats ${bc.statsBatchSize}/${bc.statsDelay}ms, odds ${bc.oddsBatchSize}/${bc.oddsDelay}ms)`,
+      );
+    }
+
+    // 2. 分阶段拉取：避免 5 路 Promise.all 同时打满短时配额（高峰 429）
+    const [statisticsMap, eventsMap] = await Promise.all([
       getStatisticsBatch(liveFixtureIds, {
-        batchSize: CONFIG.STATS_BATCH_SIZE,
-        batchDelay: CONFIG.STATS_BATCH_DELAY,
+        batchSize: bc.statsBatchSize,
+        batchDelay: bc.statsDelay,
       }),
       getEventsBatch(liveFixtureIds, {
-        batchSize: CONFIG.STATS_BATCH_SIZE,
-        batchDelay: CONFIG.STATS_BATCH_DELAY,
+        batchSize: bc.statsBatchSize,
+        batchDelay: bc.statsDelay,
       }),
+    ]);
+    await phaseGap();
+    const [liveOddsMap, prematchOddsMap] = await Promise.all([
       getLiveOddsBatch(fixtureIds, {
-        batchSize: CONFIG.ODDS_BATCH_SIZE,
-        batchDelay: CONFIG.ODDS_BATCH_DELAY,
+        batchSize: bc.oddsBatchSize,
+        batchDelay: bc.oddsDelay,
       }),
       getPrematchOddsBatch(fixtureIds, {
-        batchSize: CONFIG.ODDS_BATCH_SIZE,
-        batchDelay: CONFIG.ODDS_BATCH_DELAY,
+        batchSize: bc.oddsBatchSize,
+        batchDelay: bc.oddsDelay,
       }),
-      fetchStandingsForLiveFixtures(fixtures),
     ]);
+    await phaseGap();
+    const leagueSeasonRanks = await fetchStandingsForLiveFixtures(fixtures);
 
     // ----- 赔率诊断：API 原始返回 -----
     const liveOddsEntries = Array.from(liveOddsMap.entries());
@@ -149,7 +192,9 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
 
     applyRanksToMatches(fixtures, matches, leagueSeasonRanks);
 
-    const enrichmentMap = await enrichFixtures(fixtures);
+    const enrichmentMap = await enrichFixtures(fixtures, {
+      highLoad: liveFixtureIds.length >= CONFIG.HIGH_LOAD_LIVE_THRESHOLD,
+    });
     mergeEnrichmentIntoMatches(matches, enrichmentMap);
 
     // 计算评分
