@@ -187,6 +187,31 @@ export async function getLiveFixtures(): Promise<Match[]> {
 }
 
 /**
+ * 按日历日拉取赛程（API-Football date=YYYY-MM-DD，全球当日赛程，可能多页）
+ * 用于译名预热 Cron，每次页请求各计 1 次配额。
+ */
+export async function getFixturesByDate(date: string): Promise<Match[]> {
+  const firstRaw = await fetchAPIRaw<Match[]>('/fixtures', { date });
+  const firstChunk = Array.isArray(firstRaw.response) ? firstRaw.response : [];
+  const totalPages = typeof firstRaw.paging?.total === 'number' ? firstRaw.paging.total : 1;
+
+  if (totalPages <= 1) {
+    console.log(`[getFixturesByDate] ${date}: ${firstChunk.length} fixtures (1 page)`);
+    return firstChunk;
+  }
+
+  const all: Match[] = [...firstChunk];
+  for (let page = 2; page <= totalPages && page <= 100; page++) {
+    const raw = await fetchAPIRaw<Match[]>('/fixtures', { date, page: String(page) });
+    const chunk = Array.isArray(raw.response) ? raw.response : [];
+    if (chunk.length === 0) break;
+    all.push(...chunk);
+  }
+  console.log(`[getFixturesByDate] ${date}: ${all.length} fixtures (${totalPages} page(s))`);
+  return all;
+}
+
+/**
  * 通用 /fixtures 查询（每次调用计 1 次 API-Football 请求）
  * 例如：{ live: 'all' } | { id: '123' } | { league, season, date }
  */

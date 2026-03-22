@@ -8,6 +8,14 @@
     {
       "path": "/api/supabase-heartbeat",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/translate-names?window=today",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/translate-names?window=tomorrow",
+      "schedule": "0 16 * * *"
     }
   ],
   "rewrites": [

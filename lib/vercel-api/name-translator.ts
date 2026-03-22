@@ -18,6 +18,11 @@ let teamCache: Record<string, string> = {};
 let leagueCache: Record<string, string> = {};
 let cacheLoaded = false;
 
+/** 下次 loadNameCache 时强制从 KV 重读（避免同实例内用过期内存） */
+export function invalidateNameTranslatorLoadFlag(): void {
+  cacheLoaded = false;
+}
+
 // ---------------------------------------------------------------------------
 // Seed data — mirrors aggregator LEAGUE_NAME_MAP + top-league teams
 // KV values always take precedence; seeds are fallback only
@@ -259,33 +264,70 @@ function parseTranslationResponse(text: string): Map<number, string> {
   return result;
 }
 
-export async function translatePendingTeams(teams: PendingTeam[]): Promise<number> {
-  if (teams.length === 0) return 0;
+export interface TranslateTeamsOptions {
+  /** 每批成功后立即写 KV，避免 Cron 超时时丢已译条目 */
+  persistEachBatch?: boolean;
+  /** 超过此时间戳（Date.now()）则停止后续批次，返回 partial */
+  deadlineMs?: number;
+}
+
+export interface TranslateTeamsResult {
+  translated: number;
+  /** 因 deadline 未处理的球队数（仍可在后续 /api/matches 或下次 Cron 继续） */
+  skippedByDeadline: number;
+}
+
+export async function translatePendingTeams(
+  teams: PendingTeam[],
+  opts?: TranslateTeamsOptions,
+): Promise<TranslateTeamsResult> {
+  if (teams.length === 0) return { translated: 0, skippedByDeadline: 0 };
 
   let translated = 0;
+  let skippedByDeadline = 0;
+
   for (let i = 0; i < teams.length; i += BATCH_SIZE) {
+    if (opts?.deadlineMs != null && Date.now() >= opts.deadlineMs) {
+      skippedByDeadline = teams.length - i;
+      break;
+    }
+
     const batch = teams.slice(i, i + BATCH_SIZE);
     const lines = batch.map((t) => `${t.id}|${t.name}|${t.league}`).join('\n');
     const content = await callPerplexity(TEAM_PROMPT + lines);
     if (!content) continue;
 
     const parsed = parseTranslationResponse(content);
+    let batchAdded = 0;
     for (const [id, zh] of parsed) {
       teamCache[String(id)] = zh;
       translated++;
+      batchAdded++;
+    }
+
+    if (opts?.persistEachBatch && batchAdded > 0) {
+      try {
+        await kv.set(KV_KEY_TEAM_NAMES, teamCache);
+      } catch (e) {
+        console.error('[NameTranslator] persistEachBatch save failed:', e);
+      }
     }
   }
 
-  if (translated > 0) {
+  if (translated > 0 && !opts?.persistEachBatch) {
     try {
       await kv.set(KV_KEY_TEAM_NAMES, teamCache);
       console.log(`[NameTranslator] saved ${translated} new team translations to KV (total: ${Object.keys(teamCache).length})`);
     } catch (e) {
       console.error('[NameTranslator] failed to save team cache:', e);
     }
+  } else if (translated > 0 && opts?.persistEachBatch) {
+    console.log(
+      `[NameTranslator] teams done: +${translated} (total keys: ${Object.keys(teamCache).length}), skippedByDeadline=${skippedByDeadline}`,
+    );
   }
 
-  return translated;
+  return { translated, skippedByDeadline };
 }
 
 export async function translatePendingLeagues(leagues: PendingLeague[]): Promise<number> {

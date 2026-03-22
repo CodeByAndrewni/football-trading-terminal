@@ -14,6 +14,7 @@ import aiJournalRoute from '../lib/vercel-api/ai-journal-route.js';
 import footballCatchall from '../lib/vercel-api/football-catchall.js';
 import toolsBundleRoute from '../lib/vercel-api/tools-bundle-route.js';
 import supabaseHeartbeatRoute from '../lib/vercel-api/supabase-heartbeat-route.js';
+import translateNamesCronRoute from '../lib/vercel-api/translate-names-cron-route.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawPathname = new URL(req.url || '/', 'http://localhost').pathname;
@@ -32,6 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return toolsBundleRoute(req, res);
     }
     if (pathname === '/api/supabase-heartbeat') return supabaseHeartbeatRoute(req, res);
+    if (pathname === '/api/cron/translate-names') return translateNamesCronRoute(req, res);
 
     return res.status(404).json({
       success: false,
