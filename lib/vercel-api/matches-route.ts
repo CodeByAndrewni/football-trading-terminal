@@ -34,8 +34,8 @@ import type { AdvancedMatch } from './aggregator.js';
 // ============================================
 
 const CONFIG = {
-  CACHE_TTL: 18,              // 缓存有效期（秒） - 略增以减少高峰并发刷新
-  STALE_TTL: 60,             // 最大允许返回的旧数据年龄（秒） - 60秒内允许作为旧数据返回
+  CACHE_TTL: 20,              // 缓存有效期（秒） - 此龄内直接返回
+  STALE_TTL: 300,            // 5 分钟内仍可做 stale data 返回（同时后台刷新），避免走「无缓存等刷新」
   /** 超过该场次数视为高峰（周末夜间），收紧 batch 与阶段间隔，减轻 API-Football 429 */
   HIGH_LOAD_LIVE_THRESHOLD: Number(process.env.MATCHES_REFRESH_HIGH_LOAD_THRESHOLD ?? '80'),
   /** 阶段间 pause（ms），避免 stats/events 与 odds 同时打满瞬时配额 */

@@ -164,27 +164,25 @@ async function fetchAPI<T>(
 // ============================================
 
 /**
- * 获取所有进行中的比赛（分页拉齐；仅取第一页时 live 很多会漏后半部分联赛）
+ * 获取所有进行中的比赛。
+ * 首次请求不带 page（API-Football /fixtures?live=all 通常一页返回全部）。
+ * 若 response 的 paging.total > 1，才循环后续页（目前极少发生）。
  */
 export async function getLiveFixtures(): Promise<Match[]> {
-  const all: Match[] = [];
-  let page = 1;
-  let totalPages = 1;
-  for (;;) {
+  const firstRaw = await fetchAPIRaw<Match[]>('/fixtures', { live: 'all' });
+  const firstChunk = Array.isArray(firstRaw.response) ? firstRaw.response : [];
+  const totalPages = typeof firstRaw.paging?.total === 'number' ? firstRaw.paging.total : 1;
+
+  if (totalPages <= 1) return firstChunk;
+
+  const all: Match[] = [...firstChunk];
+  for (let page = 2; page <= totalPages && page <= 100; page++) {
     const raw = await fetchAPIRaw<Match[]>('/fixtures', { live: 'all', page: String(page) });
     const chunk = Array.isArray(raw.response) ? raw.response : [];
+    if (chunk.length === 0) break;
     all.push(...chunk);
-    totalPages = typeof raw.paging?.total === 'number' ? raw.paging.total : 1;
-    if (page >= totalPages || chunk.length === 0) break;
-    page++;
-    if (page > 100) {
-      console.warn('[getLiveFixtures] safety cap at page 100');
-      break;
-    }
   }
-  if (totalPages > 1) {
-    console.log(`[getLiveFixtures] ${totalPages} page(s), ${all.length} fixtures`);
-  }
+  console.log(`[getLiveFixtures] ${totalPages} page(s), ${all.length} fixtures total`);
   return all;
 }
 

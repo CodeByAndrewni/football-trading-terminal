@@ -11,8 +11,8 @@ import { kv } from '@vercel/kv';
 
 export const KV_CONFIG = {
   // 数据 TTL（秒）
-  MATCHES_TTL: 120,          // 120秒 - 聚合结果（含扩展字段）
-  META_TTL: 120,             // 120秒 - 刷新元数据
+  MATCHES_TTL: 600,          // 10 分钟 — 远长于 Cron 周期（2 min），确保 Cron 间数据不过期
+  META_TTL: 600,             // 与 MATCHES_TTL 对齐
   STATISTICS_TTL: 90,        // 90秒 - 统计数据
   EVENTS_TTL: 90,            // 90秒 - 事件数据
   LIVE_ODDS_TTL: 60,         // 60秒 - 滚球赔率

@@ -50,15 +50,11 @@ export interface MatchesResult {
 // ============================================
 
 const CONFIG = {
-  // API 端点
   MATCHES_ENDPOINT: '/api/matches',
-
-  // 请求超时
-  TIMEOUT_MS: 10000,
-
-  // 重试配置
+  /** 刷新上百场 + 赔率 / 统计 / 事件可能 30-60s，10s 太短导致前端超时 → 「API 未接入」 */
+  TIMEOUT_MS: 90_000,
   MAX_RETRIES: 2,
-  RETRY_DELAY_MS: 1000,
+  RETRY_DELAY_MS: 2000,
 };
 
 // ============================================
