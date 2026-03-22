@@ -54,14 +54,26 @@ export interface AiMatchCard {
   }[];
 }
 
+export interface AiMatchIndex {
+  id: number;
+  league: string;
+  home: string;
+  away: string;
+  score: string;
+  minute: number;
+  status: string;
+}
+
 export interface AiChatContext {
   generatedAt: string;
   meta?: {
     cacheAgeSeconds?: number | null;
     matchCount: number;
+    totalLive: number;
   };
   topN: number;
   matches: AiMatchCard[];
+  allMatchIndex?: AiMatchIndex[];
 }
 
 function safeInt(n: unknown): number | null {
@@ -158,6 +170,7 @@ export function buildMatchContext(
     cacheAgeSeconds?: number | null;
     includeEvents?: boolean;
     maxEventsPerMatch?: number;
+    allMatches?: AdvancedMatch[];
     scoreResultsById?: Record<
       number,
       {
@@ -175,14 +188,29 @@ export function buildMatchContext(
   const includeEvents = params?.includeEvents ?? false;
   const maxEventsPerMatch = params?.maxEventsPerMatch ?? 20;
   const scoreResultsById = params?.scoreResultsById ?? {};
+  const allMatches = params?.allMatches ?? matches;
 
   const sliced = matches.slice(0, topN);
+  const detailIds = new Set(sliced.map((m) => m.id));
+
+  const allMatchIndex: AiMatchIndex[] = allMatches
+    .filter((m) => !detailIds.has(m.id))
+    .map((m) => ({
+      id: m.id,
+      league: m.leagueShort,
+      home: m.home.name,
+      away: m.away.name,
+      score: `${safeInt(m.home.score) ?? 0}-${safeInt(m.away.score) ?? 0}`,
+      minute: safeInt(m.minute) ?? 0,
+      status: m.status,
+    }));
 
   return {
     generatedAt: new Date().toISOString(),
     meta: {
       cacheAgeSeconds: params?.cacheAgeSeconds ?? null,
-      matchCount: matches.length,
+      matchCount: sliced.length,
+      totalLive: allMatches.length,
     },
     topN: topN,
     matches: sliced.map((m) => {
@@ -263,5 +291,6 @@ export function buildMatchContext(
         events: includeEvents ? miniEvents(m.events, maxEventsPerMatch) : undefined,
       };
     }),
+    allMatchIndex: allMatchIndex.length > 0 ? allMatchIndex : undefined,
   };
 }

@@ -134,7 +134,7 @@ export function AiChatPanel({ className }: AiChatPanelProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: text, topN: 10, mode: aiMode, agent: useAgent,
+          message: text, topN: 20, mode: aiMode, agent: useAgent,
           persistJournal: true, journalDays: 10, journalLimit: 20,
         }),
       });

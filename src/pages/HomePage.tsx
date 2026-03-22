@@ -173,7 +173,7 @@ export function HomePage() {
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [watchedMatches, setWatchedMatches] = useState<Set<number>>(new Set());
-  const [liveViewMode, setLiveViewMode] = useState<LiveViewMode>('OPPORTUNITIES');
+  const [liveViewMode, setLiveViewMode] = useState<LiveViewMode>('ALL_LIVE');
 
   // 简化的筛选器 - 默认显示全部比赛
   const [filters, setFilters] = useState<Filters>({
@@ -310,10 +310,7 @@ export function HomePage() {
 
     let filtered = liveWithScores;
 
-    // ⚠️ Guard：供应商无赔率的比赛只作为 stats 参考场，不进入首页机会表 / 信号筛选
-    if (liveViewMode !== 'ALL_LIVE') {
-      filtered = filtered.filter(m => !m.noOddsFromProvider);
-    }
+    // 不再过滤无赔率比赛——所有比赛默认展示
 
     // 过滤模型：时间段 + 类型阈值
     const model = normalizeFilterModel(filterModelApplied);
@@ -1103,7 +1100,7 @@ export function HomePage() {
   );
 }
 
-type RightTab = 'ai' | 'hunter';
+type RightTab = 'ai' | 'hunter' | 'strategy';
 
 function RightSidePanel({ processedMatches, onMatchClick }: {
   processedMatches: MatchWithScore[];
@@ -1127,39 +1124,121 @@ function RightSidePanel({ processedMatches, onMatchClick }: {
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
   }, []);
 
+  const tabCls = (t: RightTab) =>
+    `flex-1 px-2 py-2 text-xs font-medium transition-colors ${tab === t ? 'text-accent-primary border-b-2 border-accent-primary bg-[#0a0f14]' : 'text-[#888] hover:text-[#ccc]'}`;
+
   return (
     <aside className="hidden xl:flex flex-shrink-0 h-full" style={{ width }}>
-      {/* 拖拽条 */}
       <div
         className="w-1.5 bg-[#111] hover:bg-accent-primary/30 cursor-col-resize transition-colors flex-shrink-0"
         onMouseDown={(e) => { dragging.current = true; startX.current = e.clientX; startW.current = width; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }}
       />
       <div className="flex-1 flex flex-col bg-[#0d0d0d] overflow-hidden">
-        {/* Tab 切换 */}
         <div className="flex-none flex border-b border-[#222]">
-          <button type="button"
-            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${tab === 'ai' ? 'text-accent-primary border-b-2 border-accent-primary bg-[#0a0f14]' : 'text-[#888] hover:text-[#ccc]'}`}
-            onClick={() => setTab('ai')}>
-            <Bot className="w-3.5 h-3.5 inline mr-1" />AI 交易顾问
+          <button type="button" className={tabCls('ai')} onClick={() => setTab('ai')}>
+            <Bot className="w-3.5 h-3.5 inline mr-1" />AI 顾问
           </button>
-          <button type="button"
-            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${tab === 'hunter' ? 'text-accent-primary border-b-2 border-accent-primary bg-[#0a0f14]' : 'text-[#888] hover:text-[#ccc]'}`}
-            onClick={() => setTab('hunter')}>
+          <button type="button" className={tabCls('hunter')} onClick={() => setTab('hunter')}>
             <Zap className="w-3.5 h-3.5 inline mr-1" />尾盘猎手
           </button>
+          <button type="button" className={tabCls('strategy')} onClick={() => setTab('strategy')}>
+            <Target className="w-3.5 h-3.5 inline mr-1" />策略筛选
+          </button>
         </div>
-        {/* 内容 */}
         <div className="flex-1 overflow-hidden">
-          {tab === 'ai' ? (
-            <AiChatPanel className="h-full" />
-          ) : (
+          {tab === 'ai' && <AiChatPanel className="h-full" />}
+          {tab === 'hunter' && (
             <div className="h-full overflow-auto p-2">
               <LateGameHunterPanel matches={processedMatches} onMatchClick={onMatchClick} />
             </div>
           )}
+          {tab === 'strategy' && <StrategyFilterPanel matches={processedMatches} onMatchClick={onMatchClick} />}
         </div>
       </div>
     </aside>
+  );
+}
+
+// ---- 策略筛选面板（预留框架） ----
+
+type StrategyId = 'strong_trailing' | 'weak_leading';
+
+const STRATEGIES: { id: StrategyId; label: string; desc: string }[] = [
+  { id: 'strong_trailing', label: '🔴 强队落后', desc: '让球 ≤ -1 的主队/客队当前落后 1 球或以上' },
+  { id: 'weak_leading', label: '🟢 弱队领先', desc: '受让 +1 球或以上的一方当前领先' },
+];
+
+function applyStrategy(matches: MatchWithScore[], sid: StrategyId): MatchWithScore[] {
+  return matches.filter((m) => {
+    const hdp = Number(m.home?.handicap) || 0;
+    const hScore = Number(m.home?.score) ?? 0;
+    const aScore = Number(m.away?.score) ?? 0;
+    // hdp < 0 → 主队让球（强队）；hdp > 0 → 客队让球（强队）
+    if (sid === 'strong_trailing') {
+      if (hdp <= -1) return hScore < aScore; // 主队是强队，主队落后
+      if (hdp >= 1) return aScore < hScore;  // 客队是强队，客队落后
+      return false;
+    }
+    if (sid === 'weak_leading') {
+      if (hdp <= -1) return aScore > hScore; // 客队是弱队，客队领先
+      if (hdp >= 1) return hScore > aScore;  // 主队是弱队，主队领先
+      return false;
+    }
+    return true;
+  });
+}
+
+function StrategyFilterPanel({ matches, onMatchClick }: { matches: MatchWithScore[]; onMatchClick: (id: number) => void }) {
+  const [active, setActive] = useState<StrategyId | null>(null);
+
+  const filtered = useMemo(() => {
+    if (!active) return [];
+    return applyStrategy(matches, active);
+  }, [matches, active]);
+
+  const strategyMeta = STRATEGIES.find((s) => s.id === active);
+
+  return (
+    <div className="h-full flex flex-col text-sm">
+      <div className="flex-none p-3 space-y-2 border-b border-[#222]">
+        <p className="text-[#999] text-xs">选择一个策略，自动筛选符合条件的比赛</p>
+        <div className="flex flex-wrap gap-1.5">
+          {STRATEGIES.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setActive(active === s.id ? null : s.id)}
+              className={`px-2.5 py-1 rounded text-xs transition-colors ${active === s.id ? 'bg-accent-primary/20 text-accent-primary ring-1 ring-accent-primary/40' : 'bg-[#1a1a1a] text-[#aaa] hover:text-white hover:bg-[#222]'}`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        {strategyMeta && <p className="text-[10px] text-[#666]">{strategyMeta.desc}</p>}
+      </div>
+      <div className="flex-1 overflow-auto p-2">
+        {!active && <p className="text-[#555] text-xs mt-8 text-center">请选择策略</p>}
+        {active && filtered.length === 0 && <p className="text-[#555] text-xs mt-8 text-center">当前无匹配比赛</p>}
+        {filtered.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => onMatchClick(m.id)}
+            className="w-full text-left px-3 py-2 rounded hover:bg-[#1a1a1a] transition-colors mb-1"
+          >
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#888]">{m.leagueShort}</span>
+              <span className="text-[#666]">{m.minute}'</span>
+            </div>
+            <div className="flex items-center justify-between mt-0.5">
+              <span className="text-[#ddd] text-xs truncate flex-1">{m.home.name}</span>
+              <span className="text-white font-mono text-sm mx-2">{m.home.score} - {m.away.score}</span>
+              <span className="text-[#ddd] text-xs truncate flex-1 text-right">{m.away.name}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

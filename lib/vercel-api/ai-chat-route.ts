@@ -23,9 +23,9 @@ const DEEPSEEK_CHAT_ENDPOINT =
   process.env.DEEPSEEK_CHAT_URL ?? 'https://api.deepseek.com/chat/completions';
 const PERPLEXITY_SONAR_ENDPOINT = 'https://api.perplexity.ai/v1/sonar';
 
-const DEFAULT_TOP_N = 10;
+const DEFAULT_TOP_N = 20;
 const MIN_TOP_N = 3;
-const MAX_TOP_N = 15;
+const MAX_TOP_N = 30;
 
 type DeepSeekChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -595,6 +595,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     cacheAgeSeconds,
     includeEvents: true,
     maxEventsPerMatch: 15,
+    allMatches: matches,
   });
 
   const journalRows = await fetchJournalForPrompt({ days: journalDays, limit: journalLimit });
@@ -611,6 +612,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     '【角色】你是滚球交易决策顾问，不是比赛解说员。用户需要的是可执行的交易建议，而非盘面描述。',
     '',
     '【数据来源】随请求附带「当前 live 聚合比赛上下文」JSON，由后端从 Vercel KV 缓存或 API-Football 实时拉取生成。generatedAt 为生成时间，meta.cacheAgeSeconds 为缓存年龄。',
+    'JSON 包含两部分：matches（前 N 场详细数据）和 allMatchIndex（其余全部 live 比赛的精简索引：id/联赛/队名/比分/分钟/状态）。',
+    '当用户问到不在 matches 里的比赛时，先在 allMatchIndex 中查找并告知基本信息，说明"该场不在详细分析范围内，但基本数据如下"。',
     '若消息中出现「Perplexity 补充参考」段落（HYBRID 模式），其来自 Perplexity 检索，引用时请区分。',
     '',
     '【记忆】聊天窗口多轮对话不自动传给模型。长期判断记录来自 Supabase ai_trade_journal；若附带「历史判断记录」JSON 请结合复盘。',
