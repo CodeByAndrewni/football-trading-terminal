@@ -27,6 +27,7 @@ import { MobileMenu } from '../components/layout/MobileMenu';
 import { AcceptanceReport } from '../components/home/AcceptanceReport';
 import { LateGameHunterPanel } from '../components/home/LateGameHunterPanel';
 import { LateHunterPanel } from '../components/home/LateHunterPanel';
+import { StrategyMonitorPanel } from '../components/home/StrategyMonitorPanel';
 import { getWatchlist, addToWatchlist, removeFromWatchlist } from '../services/battleRoomWatchlist';
 // Phase 2: Live Scanner Engine
 import {
@@ -1142,7 +1143,7 @@ function RightSidePanel({ processedMatches, onMatchClick }: {
             <Zap className="w-3.5 h-3.5 inline mr-1" />尾盘猎手
           </button>
           <button type="button" className={tabCls('strategy')} onClick={() => setTab('strategy')}>
-            <Target className="w-3.5 h-3.5 inline mr-1" />策略筛选
+            <Target className="w-3.5 h-3.5 inline mr-1" />策略监控
           </button>
         </div>
         <div className="flex-1 overflow-hidden">
@@ -1152,94 +1153,12 @@ function RightSidePanel({ processedMatches, onMatchClick }: {
               <LateGameHunterPanel matches={processedMatches} onMatchClick={onMatchClick} />
             </div>
           )}
-          {tab === 'strategy' && <StrategyFilterPanel matches={processedMatches} onMatchClick={onMatchClick} />}
+          {tab === 'strategy' && <StrategyMonitorPanel matches={processedMatches} onMatchClick={onMatchClick} />}
         </div>
       </div>
     </aside>
   );
 }
 
-// ---- 策略筛选面板（预留框架） ----
-
-type StrategyId = 'strong_trailing' | 'weak_leading';
-
-const STRATEGIES: { id: StrategyId; label: string; desc: string }[] = [
-  { id: 'strong_trailing', label: '🔴 强队落后', desc: '让球 ≤ -1 的主队/客队当前落后 1 球或以上' },
-  { id: 'weak_leading', label: '🟢 弱队领先', desc: '受让 +1 球或以上的一方当前领先' },
-];
-
-function applyStrategy(matches: MatchWithScore[], sid: StrategyId): MatchWithScore[] {
-  return matches.filter((m) => {
-    const hdp = Number(m.home?.handicap) || 0;
-    const hScore = Number(m.home?.score) ?? 0;
-    const aScore = Number(m.away?.score) ?? 0;
-    // hdp < 0 → 主队让球（强队）；hdp > 0 → 客队让球（强队）
-    if (sid === 'strong_trailing') {
-      if (hdp <= -1) return hScore < aScore; // 主队是强队，主队落后
-      if (hdp >= 1) return aScore < hScore;  // 客队是强队，客队落后
-      return false;
-    }
-    if (sid === 'weak_leading') {
-      if (hdp <= -1) return aScore > hScore; // 客队是弱队，客队领先
-      if (hdp >= 1) return hScore > aScore;  // 主队是弱队，主队领先
-      return false;
-    }
-    return true;
-  });
-}
-
-function StrategyFilterPanel({ matches, onMatchClick }: { matches: MatchWithScore[]; onMatchClick: (id: number) => void }) {
-  const [active, setActive] = useState<StrategyId | null>(null);
-
-  const filtered = useMemo(() => {
-    if (!active) return [];
-    return applyStrategy(matches, active);
-  }, [matches, active]);
-
-  const strategyMeta = STRATEGIES.find((s) => s.id === active);
-
-  return (
-    <div className="h-full flex flex-col text-sm">
-      <div className="flex-none p-3 space-y-2 border-b border-[#222]">
-        <p className="text-[#999] text-xs">选择一个策略，自动筛选符合条件的比赛</p>
-        <div className="flex flex-wrap gap-1.5">
-          {STRATEGIES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setActive(active === s.id ? null : s.id)}
-              className={`px-2.5 py-1 rounded text-xs transition-colors ${active === s.id ? 'bg-accent-primary/20 text-accent-primary ring-1 ring-accent-primary/40' : 'bg-[#1a1a1a] text-[#aaa] hover:text-white hover:bg-[#222]'}`}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-        {strategyMeta && <p className="text-[10px] text-[#666]">{strategyMeta.desc}</p>}
-      </div>
-      <div className="flex-1 overflow-auto p-2">
-        {!active && <p className="text-[#555] text-xs mt-8 text-center">请选择策略</p>}
-        {active && filtered.length === 0 && <p className="text-[#555] text-xs mt-8 text-center">当前无匹配比赛</p>}
-        {filtered.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => onMatchClick(m.id)}
-            className="w-full text-left px-3 py-2 rounded hover:bg-[#1a1a1a] transition-colors mb-1"
-          >
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[#888]">{m.leagueShort}</span>
-              <span className="text-[#666]">{m.minute}'</span>
-            </div>
-            <div className="flex items-center justify-between mt-0.5">
-              <span className="text-[#ddd] text-xs truncate flex-1">{m.home.name}</span>
-              <span className="text-white font-mono text-sm mx-2">{m.home.score} - {m.away.score}</span>
-              <span className="text-[#ddd] text-xs truncate flex-1 text-right">{m.away.name}</span>
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default HomePage;
