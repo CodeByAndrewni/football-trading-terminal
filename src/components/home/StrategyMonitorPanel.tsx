@@ -28,8 +28,10 @@ export const BUILTIN_STRATEGIES: StrategyDef[] = Object.values(SCENARIO_META).ma
   emoji: meta.emoji,
   desc: meta.desc,
   filter: (m: AdvancedMatch) => {
-    const signals = getActiveScenarios(m);
-    return signals.some(s => s.id === meta.id);
+    try {
+      const signals = getActiveScenarios(m);
+      return signals.some(s => s.id === meta.id);
+    } catch { return false; }
   },
 }));
 
@@ -84,7 +86,8 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
     let total = 0;
 
     for (const m of matches) {
-      const active = getActiveScenarios(m);
+      let active: ScenarioSignal[];
+      try { active = getActiveScenarios(m); } catch { continue; }
       for (const sig of active) {
         const list = byScenario.get(sig.id) ?? [];
         list.push({ match: m, signal: sig });

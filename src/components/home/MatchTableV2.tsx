@@ -329,8 +329,12 @@ export function MatchTableV2({
     // 情景引擎 composite score 计算（含旧策略兼容）
     const compositeMap = new Map<number, CompositeSignal>();
     for (const m of filteredMatches) {
-      const active = getActiveScenarios(m);
-      compositeMap.set(m.id, aggregateScenarioSignals(active));
+      try {
+        const active = getActiveScenarios(m);
+        compositeMap.set(m.id, aggregateScenarioSignals(active));
+      } catch {
+        // 数据不完整时跳过，不影响整体渲染
+      }
     }
 
     return filteredMatches.sort((a, b) => {
@@ -679,8 +683,10 @@ const MatchRow = memo(function MatchRow({
   const hasRedCard = (match.cards?.red?.home ?? 0) + (match.cards?.red?.away ?? 0) > 0;
   const totalGoals = (match.home?.score ?? 0) + (match.away?.score ?? 0);
 
-  const scenarioHits = useMemo(() => getActiveScenarios(match), [match]);
-  const isStrategyHit = scenarioHits.length > 0 || BUILTIN_STRATEGIES.some(s => s.filter(match));
+  const scenarioHits = useMemo(() => {
+    try { return getActiveScenarios(match); } catch { return []; }
+  }, [match]);
+  const isStrategyHit = scenarioHits.length > 0 || BUILTIN_STRATEGIES.some(s => { try { return s.filter(match); } catch { return false; } });
 
   const getRowStyle = () => {
     const action = lateSignal?.action ?? moduleASignal?.action;
