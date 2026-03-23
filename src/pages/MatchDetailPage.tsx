@@ -142,7 +142,14 @@ export function MatchDetailPage() {
     ? `${match.minute}+${match.extraMinute}'`
     : `${match.minute}'`;
 
-  const aiContext = useMemo(() => buildMatchContext(match), [match]);
+  const aiContext = useMemo(() => {
+    try {
+      return buildMatchContext(match);
+    } catch (e) {
+      console.warn('[MatchDetail] buildMatchContext failed:', e);
+      return `📋 ${match.home.name} ${match.home.score} - ${match.away.score} ${match.away.name} | ${match.minute}'`;
+    }
+  }, [match]);
 
   const tabCls = (t: DetailTab) =>
     `flex-1 py-2 text-xs font-medium text-center transition-colors ${
@@ -267,9 +274,9 @@ function ScoreBoard({ match, minuteDisplay, isLive }: { match: AdvancedMatch; mi
             {mw && (
               <>
                 <span className="text-[#555]">|</span>
-                <span className="text-[#ccc]">胜<span className="text-[#e0e0e0] font-mono">{mw.home ?? '-'}</span></span>
-                <span className="text-[#ccc]">平<span className="text-[#e0e0e0] font-mono">{mw.draw ?? '-'}</span></span>
-                <span className="text-[#ccc]">负<span className="text-[#e0e0e0] font-mono">{mw.away ?? '-'}</span></span>
+                <span className="text-[#ccc]">胜<span className="text-[#e0e0e0] font-mono">{String(mw.home ?? '-')}</span></span>
+                <span className="text-[#ccc]">平<span className="text-[#e0e0e0] font-mono">{String(mw.draw ?? '-')}</span></span>
+                <span className="text-[#ccc]">负<span className="text-[#e0e0e0] font-mono">{String(mw.away ?? '-')}</span></span>
               </>
             )}
           </div>
@@ -481,12 +488,13 @@ function EventsFeed({ match }: { match: AdvancedMatch }) {
         const teamName = ev.team?.name ?? (isHome ? match.home.name : match.away.name);
         const t = (ev.type ?? '').toLowerCase();
 
+        const rawDetail = typeof ev.detail === 'string' ? ev.detail : (ev.detail != null ? String(ev.detail) : undefined);
         let desc = '';
         if (t === 'goal') desc = assistName ? `进球 (助攻: ${assistName})` : '进球';
-        else if (t === 'card') desc = ev.detail ?? '牌';
+        else if (t === 'card') desc = rawDetail ?? '牌';
         else if (t === 'subst') desc = `换人 ~ ${playerName} ~ ${assistName ?? ''}`;
-        else if (t === 'var') desc = ev.detail ?? 'VAR';
-        else desc = ev.detail ?? ev.type;
+        else if (t === 'var') desc = rawDetail ?? 'VAR';
+        else desc = rawDetail ?? ev.type;
 
         let subLine: string;
         let subIntent: string | null = null;
