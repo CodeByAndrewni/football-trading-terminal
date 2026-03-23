@@ -111,7 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const activeSignals = getActiveScenarios(m);
     if (activeSignals.length === 0) continue;
 
-    const composite = aggregateScenarioSignals(activeSignals);
+    const composite = aggregateScenarioSignals(activeSignals, m);
 
     for (const rule of enabledRules) {
       if (composite.compositeScore < rule.minCompositeScore) continue;

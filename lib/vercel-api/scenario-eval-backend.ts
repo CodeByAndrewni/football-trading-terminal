@@ -436,31 +436,75 @@ export function getActiveScenarios(match: AdvancedMatch): ScenarioSignal[] {
 
 export type CompositeAction = 'HIGH' | 'MEDIUM' | 'LOW' | 'NONE';
 
+export interface OddsEdgeResult {
+  impliedOverProb: number | null;
+  edge: number | null;
+  oddsMultiplier: number;
+}
+
 export interface CompositeSignal {
   topScenarios: ScenarioSignal[];
+  rawScore: number;
   compositeScore: number;
   action: CompositeAction;
   activeCount: number;
   byCategory: Record<ScenarioCategory, number>;
+  oddsEdge?: OddsEdgeResult;
 }
 
 const TIER_W = SCENARIO_THRESHOLDS.TIER_WEIGHT;
 
-export function aggregateScenarioSignals(activeSignals: ScenarioSignal[]): CompositeSignal {
+function calculateOddsEdgeBackend(m: AdvancedMatch, rawScore: number): OddsEdgeResult {
+  const overOdds = m.odds?.overUnder?.over ?? null;
+  const underOdds = m.odds?.overUnder?.under ?? null;
+  if (typeof overOdds !== 'number' || typeof underOdds !== 'number') {
+    return { impliedOverProb: null, edge: null, oddsMultiplier: 1.0 };
+  }
+  const rawOver = 1 / overOdds;
+  const rawUnder = 1 / underOdds;
+  const total = rawOver + rawUnder;
+  const overProb = total > 0 ? rawOver / total : 0.5;
+  const remainMin = Math.max(1, 95 - m.minute);
+  const baseline = Math.min(0.65, remainMin * 0.012);
+  const modelProb = Math.min(0.85, baseline + (rawScore / 100) * 0.30);
+  const edge = modelProb - overProb;
+  let mult = 1.0;
+  if (edge > 0.15) mult += 0.25;
+  else if (edge > 0.08) mult += 0.15;
+  else if (edge > 0) mult += 0.05;
+  else if (edge < -0.15) mult -= 0.30;
+  else if (edge < -0.05) mult -= 0.15;
+  if (overOdds < 1.5) mult -= 0.20;
+  if (overOdds >= 2.0 && overOdds <= 3.5 && edge > 0.05) mult += 0.10;
+  mult = Math.max(0.3, Math.min(1.5, mult));
+  return { impliedOverProb: overProb, edge, oddsMultiplier: mult };
+}
+
+export function aggregateScenarioSignals(activeSignals: ScenarioSignal[], match?: AdvancedMatch): CompositeSignal {
   if (activeSignals.length === 0) {
-    return { topScenarios: [], compositeScore: 0, action: 'NONE', activeCount: 0, byCategory: { match_state: 0, momentum: 0, price_psychology: 0 } };
+    return { topScenarios: [], rawScore: 0, compositeScore: 0, action: 'NONE', activeCount: 0, byCategory: { match_state: 0, momentum: 0, price_psychology: 0 } };
   }
   const sorted = [...activeSignals].sort((a, b) => b.score - a.score);
   const top3 = sorted.slice(0, 3);
   let weightedSum = 0, weightTotal = 0;
   for (const s of top3) { const w = TIER_W[s.tier]; weightedSum += s.score * w; weightTotal += w; }
-  let composite = weightTotal > 0 ? weightedSum / weightTotal : 0;
+  let rawComposite = weightTotal > 0 ? weightedSum / weightTotal : 0;
   const bonus = Math.min(15, (activeSignals.length - 1) * 3);
-  composite = Math.min(100, Math.round(composite + bonus));
+  rawComposite = Math.min(100, Math.round(rawComposite + bonus));
+
+  let oddsEdge: OddsEdgeResult | undefined;
+  let adjustedScore = rawComposite;
+  if (match) {
+    try {
+      oddsEdge = calculateOddsEdgeBackend(match, rawComposite);
+      adjustedScore = Math.round(Math.max(0, Math.min(100, rawComposite * oddsEdge.oddsMultiplier)));
+    } catch { /* 不影响主链路 */ }
+  }
+
   const byCategory: Record<ScenarioCategory, number> = { match_state: 0, momentum: 0, price_psychology: 0 };
   for (const s of activeSignals) byCategory[s.category]++;
-  const action: CompositeAction = composite >= SCENARIO_THRESHOLDS.COMPOSITE.HIGH ? 'HIGH' : composite >= SCENARIO_THRESHOLDS.COMPOSITE.MEDIUM ? 'MEDIUM' : composite >= SCENARIO_THRESHOLDS.COMPOSITE.LOW ? 'LOW' : 'NONE';
-  return { topScenarios: sorted.slice(0, 5), compositeScore: composite, action, activeCount: activeSignals.length, byCategory };
+  const action: CompositeAction = adjustedScore >= SCENARIO_THRESHOLDS.COMPOSITE.HIGH ? 'HIGH' : adjustedScore >= SCENARIO_THRESHOLDS.COMPOSITE.MEDIUM ? 'MEDIUM' : adjustedScore >= SCENARIO_THRESHOLDS.COMPOSITE.LOW ? 'LOW' : 'NONE';
+  return { topScenarios: sorted.slice(0, 5), rawScore: rawComposite, compositeScore: adjustedScore, action, activeCount: activeSignals.length, byCategory, oddsEdge };
 }
 
 // ============================================================

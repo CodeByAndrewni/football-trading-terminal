@@ -84,7 +84,7 @@ function buildMatchContext(m: AdvancedMatch): string {
   // 情景引擎分析
   const activeScenarios = getActiveScenarios(m);
   if (activeScenarios.length > 0) {
-    const composite = aggregateScenarioSignals(activeScenarios);
+    const composite = aggregateScenarioSignals(activeScenarios, m);
     lines.push('', formatCompositeForAI(composite));
   }
 

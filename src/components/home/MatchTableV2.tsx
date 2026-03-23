@@ -331,7 +331,7 @@ export function MatchTableV2({
     for (const m of filteredMatches) {
       try {
         const active = getActiveScenarios(m);
-        compositeMap.set(m.id, aggregateScenarioSignals(active));
+        compositeMap.set(m.id, aggregateScenarioSignals(active, m));
       } catch {
         // 数据不完整时跳过，不影响整体渲染
       }
