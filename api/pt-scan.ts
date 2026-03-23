@@ -3,17 +3,22 @@
  *
  * 路径: GET /api/pt-scan
  *
- * 独立部署，不走 api/[...path].ts catch-all，
- * 避免 src/ 运行时模块导入导致 catch-all 崩溃。
+ * 独立部署，不走 api/[...path].ts catch-all。
+ * 所有情景引擎/复合信号/规则配置均从 lib/vercel-api/scenario-eval-backend 导入，
+ * 不依赖 src/（避免 Vercel bundler 无法追踪 src/ 运行时模块的问题）。
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getMatches } from '../lib/vercel-api/kv.js';
 import type { AdvancedMatch } from '../src/data/advancedMockData';
-import { getActiveScenarios, type ScenarioSignal } from '../src/services/modules/scenarioEngine';
-import { aggregateScenarioSignals } from '../src/services/compositeSignal';
-import { PAPER_TRADE_RULES, type PaperTradeRule } from '../src/config/paperTradeConfig';
+import {
+  getActiveScenarios,
+  aggregateScenarioSignals,
+  PAPER_TRADE_RULES,
+  type ScenarioSignal,
+  type PaperTradeRule,
+} from '../lib/vercel-api/scenario-eval-backend.js';
 
 function getServiceClient(): SupabaseClient | null {
   const url =
