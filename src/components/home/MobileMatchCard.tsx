@@ -8,7 +8,6 @@ import { Star, ChevronRight, Zap, TrendingUp, TrendingDown, Minus } from 'lucide
 import type { AdvancedMatch } from '../../data/advancedMockData';
 import { LEAGUE_COLORS } from '../../data/advancedMockData';
 import { calculateDynamicScore, type ScoreResult } from '../../services/scoringEngine';
-import { useLiveClock } from '../../hooks/useLiveClock';
 import { formatMatchMinute } from '../../utils/matchTime';
 import { formatLeagueWithCountry } from '../../utils/leagueDisplay';
 
@@ -38,9 +37,6 @@ export function MobileMatchCard({ match, onToggleWatch }: MobileMatchCardProps) 
 
   // 即使无法评分，比赛项仍然应该显示
   const isUnscoreable = !scoreResult || match._unscoreable === true;
-
-  const liveClockTick = useLiveClock(5000);
-  const deltaMinutes = 0; // 比赛时间完全以 API 的 elapsed 为准，不再做本地分钟推算
 
   // 评分样式
   const getScoreStyle = () => {

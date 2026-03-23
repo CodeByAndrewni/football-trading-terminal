@@ -6,7 +6,7 @@
  * ============================================
  */
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronUp, Bug, Filter, Volume2 } from "lucide-react";
 import type { AdvancedMatch } from "../../data/advancedMockData";
@@ -32,6 +32,7 @@ import {
 } from "../../services/modules/unifiedLateModule";
 import { CompactScenarioTag } from "../ui/ScenarioTag";
 import { STRATEGY_CONFIG } from "../../config/strategyConfig";
+import { BUILTIN_STRATEGIES } from "./StrategyMonitorPanel";
 import { SimpleOddsBadge } from "../ui/OddsMovementBadge";
 // v161: 积分榜服务 + 声音通知
 import { batchGetMatchStrengths, type MatchStrengthMap } from "../../hooks/useStandings";
@@ -43,7 +44,6 @@ import {
   type OddsMovementSummary,
 } from "../../services/oddsHistoryService";
 import { OddsMovementBadge, type OddsMovement } from "../ui/OddsMovementBadge";
-import { useLiveClock } from "../../hooks/useLiveClock";
 import { formatMatchMinute } from "../../utils/matchTime";
 import { formatLeagueWithCountry } from "../../utils/leagueDisplay";
 import { CompactRating } from "./DynamicRating";
@@ -173,18 +173,6 @@ export function MatchTableV2({
       if (hasLiveOdds) {
         lastSeenLiveAtRef.current.set(m.id, now);
       }
-
-      console.log(`[Odds Debug] fixture=${m.id} | ${m.home.name} vs ${m.away.name}`, {
-        hasOdds,
-        hasLiveOdds,
-        hasPrematchOdds,
-        oddsSource: m.odds?._source,
-        fetchStatus: m.odds?._fetch_status,
-        hasStats,
-        statsAvailable: m.stats?._realDataAvailable,
-        xgHome: m.stats?.xG?.home ?? null,
-        xgAway: m.stats?.xG?.away ?? null,
-      });
 
       // 计算 Module A 信号（只在 65'+ 且有数据时）
       let moduleASignal: UnifiedSignal | null = null;
@@ -336,35 +324,39 @@ export function MatchTableV2({
       );
     }
 
+    // 策略命中检测：任一内置策略命中则置顶
+    const strategyHitSet = new Set<number>();
+    for (const m of filteredMatches) {
+      if (BUILTIN_STRATEGIES.some(s => s.filter(m))) {
+        strategyHitSet.add(m.id);
+      }
+    }
+
     return filteredMatches.sort((a, b) => {
+      // 策略命中始终置顶
+      const aHit = strategyHitSet.has(a.id) ? 1 : 0;
+      const bHit = strategyHitSet.has(b.id) ? 1 : 0;
+      if (aHit !== bHit) return bHit - aHit;
+
       if (sortField === "score") {
-        // v159: 优先使用晚期模块分数，回退到 Module A，最后用旧评分
         const aScore = a.lateSignal?.score ?? a.moduleASignal?.score ?? a.scoreResult?.totalScore ?? 0;
         const bScore = b.lateSignal?.score ?? b.moduleASignal?.score ?? b.scoreResult?.totalScore ?? 0;
 
-        // BET/PREPARE 行动置顶
         const aAction = a.lateSignal?.action ?? a.moduleASignal?.action ?? 'IGNORE';
         const bAction = b.lateSignal?.action ?? b.moduleASignal?.action ?? 'IGNORE';
         const actionPriority = { BET: 4, PREPARE: 3, WATCH: 2, IGNORE: 1 };
         const aPriority = actionPriority[aAction as keyof typeof actionPriority] ?? 1;
         const bPriority = actionPriority[bAction as keyof typeof actionPriority] ?? 1;
 
-        if (aPriority !== bPriority) {
-          return bPriority - aPriority;
-        }
-
+        if (aPriority !== bPriority) return bPriority - aPriority;
         return sortAsc ? aScore - bScore : bScore - aScore;
       }
-      // 时间排序：进行中按分钟倒序，未开始按开赛时间升序
+
       const aIsLive = !["NS", "未开始"].includes(a.status);
       const bIsLive = !["NS", "未开始"].includes(b.status);
-
-      if (aIsLive && bIsLive) {
-        return sortAsc ? a.minute - b.minute : b.minute - a.minute;
-      }
+      if (aIsLive && bIsLive) return sortAsc ? a.minute - b.minute : b.minute - a.minute;
       if (aIsLive && !bIsLive) return -1;
       if (!aIsLive && bIsLive) return 1;
-      // 都是未开始，按开赛时间升序
       return sortAsc ? b.minute - a.minute : a.minute - b.minute;
     });
   }, [matchesWithScores, sortField, sortAsc, filters, inlineOddsConfirmed]);
@@ -385,11 +377,9 @@ export function MatchTableV2({
     if (action === 'BET' && !notifiedMatchesRef.current.has(notifyKey)) {
       notifiedMatchesRef.current.add(notifyKey);
       playSound('high_score');
-      console.log(`[SoundNotify] BET signal: ${match.home.name} vs ${match.away.name} (${match.minute}') score=${score}`);
     } else if (action === 'PREPARE' && score >= 80 && !notifiedMatchesRef.current.has(notifyKey)) {
       notifiedMatchesRef.current.add(notifyKey);
       playSound('alert');
-      console.log(`[SoundNotify] PREPARE signal: ${match.home.name} vs ${match.away.name} (${match.minute}') score=${score}`);
     }
 
     // 强队追分特殊音效
@@ -551,7 +541,7 @@ return (
 }
 
 // 单行组件
-function MatchRow({
+const MatchRow = memo(function MatchRow({
   match,
   isWatched,
   onToggleWatch,
@@ -564,8 +554,6 @@ function MatchRow({
   onViewDetail: () => void;
   showImbalanceColumns?: boolean;
 }) {
-  const liveClockTick = useLiveClock(5000);
-  const deltaMinutes = 0; // 比赛时间完全以 API 的 elapsed 为准，不再做本地分钟推算
   const [showDebug, setShowDebug] = useState(false);
   const [showReasons, setShowReasons] = useState(false);
 
@@ -690,6 +678,8 @@ function MatchRow({
   const hasRedCard = (match.cards?.red?.home ?? 0) + (match.cards?.red?.away ?? 0) > 0;
   const totalGoals = (match.home?.score ?? 0) + (match.away?.score ?? 0);
 
+  const isStrategyHit = useMemo(() => BUILTIN_STRATEGIES.some(s => s.filter(match)), [match]);
+
   const getRowStyle = () => {
     const action = lateSignal?.action ?? moduleASignal?.action;
 
@@ -722,15 +712,6 @@ function MatchRow({
 
   // 让球盘显示 - Phase 2A: 无假数据
   const handicapOdds = useMemo(() => {
-    // 🔥 DEBUG: 检查 match.odds 内容
-    console.log(`[ODDS_DEBUG_UI] fixture=${match.id} | odds:`, {
-      hasOdds: !!match.odds,
-      fetchStatus: match.odds?._fetch_status,
-      source: match.odds?._source,
-      handicapValue: match.odds?.handicap?.value,
-      ouTotal: match.odds?.overUnder?.total,
-    });
-
     // 检查是否有真实数据
     const oddsSource = match.odds?._fetch_status;
     const handicapValue = match.odds?.handicap?.value;
@@ -938,7 +919,7 @@ function MatchRow({
   return (
     <>
       <tr
-        className={`${getRowStyle()} border-b border-[#222] cursor-pointer transition-colors`}
+        className={`${getRowStyle()} border-b border-[#222] cursor-pointer transition-colors ${isStrategyHit ? 'ring-1 ring-inset ring-[#00d4ff]/30' : ''}`}
         onClick={onViewDetail}
       >
         {/* 时间 */}
@@ -1008,7 +989,7 @@ function MatchRow({
       )}
     </>
   );
-}
+});
 
 // Phase 2: 失衡指标单元格组件
 function ImbalanceCell({
