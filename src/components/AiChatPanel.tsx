@@ -107,16 +107,22 @@ function MarkdownContent({ content }: { content: string }) {
 
 interface AiChatPanelProps {
   className?: string;
+  /** Pre-filled system context (e.g. match data summary) injected before first user message */
+  initialContext?: string;
 }
 
-export function AiChatPanel({ className }: AiChatPanelProps) {
+export function AiChatPanel({ className, initialContext }: AiChatPanelProps) {
   const [input, setInput] = useState("");
   type AiMode = "DEEPSEEK" | "PERPLEXITY" | "HYBRID";
   const [aiMode, setAiMode] = useState<AiMode>("DEEPSEEK");
   const [agentEnabled, setAgentEnabled] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => [
-    { id: uid(), role: "assistant", content: WELCOME },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const msgs: ChatMessage[] = [{ id: uid(), role: "assistant", content: WELCOME }];
+    if (initialContext) {
+      msgs.push({ id: uid(), role: "assistant", content: initialContext });
+    }
+    return msgs;
+  });
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 

@@ -5,11 +5,12 @@
 
 import { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, WifiOff, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, WifiOff, AlertTriangle, Bot } from 'lucide-react';
 import type { AdvancedMatch, MatchEvent } from '../data/advancedMockData';
 import { LEAGUE_COLORS } from '../data/advancedMockData';
 import { useMatchAdvanced } from '../hooks/useMatches';
 import { formatLeagueWithCountry } from '../utils/leagueDisplay';
+import { AiChatPanel } from '../components/AiChatPanel';
 
 // ============================================
 // Helper: format display value, show "-" when missing
@@ -52,7 +53,34 @@ function eventIcon(type: string, detail?: string): string {
 // ============================================
 // Sub-tab types
 // ============================================
-type DetailTab = 'events' | 'lineups' | 'momentum' | 'standings';
+type DetailTab = 'events' | 'lineups' | 'momentum' | 'standings' | 'ai';
+
+function buildMatchContext(m: AdvancedMatch): string {
+  const lines: string[] = [
+    `📋 **当前比赛上下文** (fixture ${m.id})`,
+    `**${m.home.name}** ${m.home.score} - ${m.away.score} **${m.away.name}**`,
+    `联赛: ${formatLeagueWithCountry(m)} | 状态: ${m.status} | ${m.minute}'`,
+  ];
+  const s = m.stats;
+  if (s?._realDataAvailable) {
+    lines.push('', '**统计:**');
+    if (s.possession) lines.push(`控球: ${s.possession.home}% - ${s.possession.away}%`);
+    if (s.shots) lines.push(`射门: ${s.shots.home} - ${s.shots.away}`);
+    if (s.shotsOnTarget) lines.push(`射正: ${s.shotsOnTarget.home} - ${s.shotsOnTarget.away}`);
+    if (s.xG) lines.push(`xG: ${s.xG.home?.toFixed(2)} - ${s.xG.away?.toFixed(2)}`);
+    if (m.corners) lines.push(`角球: ${m.corners.home} - ${m.corners.away}`);
+  }
+  if (m.odds?._fetch_status === 'SUCCESS') {
+    lines.push('', '**赔率:**');
+    if (m.odds.handicap) lines.push(`让球: ${m.odds.handicap.value} (${m.odds.handicap.home}/${m.odds.handicap.away})`);
+    if (m.odds.overUnder) lines.push(`大小: ${m.odds.overUnder.total} (${m.odds.overUnder.over}/${m.odds.overUnder.under})`);
+  }
+  if (m.cards?.red && ((m.cards.red.home ?? 0) + (m.cards.red.away ?? 0) > 0)) {
+    lines.push(`红牌: 主 ${m.cards.red.home ?? 0} / 客 ${m.cards.red.away ?? 0}`);
+  }
+  lines.push('', '你可以直接问「这场该不该进？」「大球还是小球？」等问题。');
+  return lines.join('\n');
+}
 
 // ============================================
 // Page
@@ -103,6 +131,8 @@ export function MatchDetailPage() {
   const minuteDisplay = match.extraMinute
     ? `${match.minute}+${match.extraMinute}'`
     : `${match.minute}'`;
+
+  const aiContext = useMemo(() => buildMatchContext(match), [match]);
 
   const tabCls = (t: DetailTab) =>
     `flex-1 py-2 text-xs font-medium text-center transition-colors ${
@@ -156,6 +186,9 @@ export function MatchDetailPage() {
           <button type="button" className={tabCls('lineups')} onClick={() => setTab('lineups')}>双方阵容</button>
           <button type="button" className={tabCls('momentum')} onClick={() => setTab('momentum')}>攻防走势</button>
           <button type="button" className={tabCls('standings')} onClick={() => setTab('standings')}>积分榜</button>
+          <button type="button" className={tabCls('ai')} onClick={() => setTab('ai')}>
+            <Bot className="w-3 h-3 inline mr-0.5" />AI 分析
+          </button>
         </div>
 
         <div className="px-4 py-3 pb-12">
@@ -163,6 +196,11 @@ export function MatchDetailPage() {
           {tab === 'lineups' && <LineupsTab match={match} />}
           {tab === 'momentum' && <MomentumTab match={match} />}
           {tab === 'standings' && <StandingsTab match={match} />}
+          {tab === 'ai' && (
+            <div className="h-[60vh] -mx-4">
+              <AiChatPanel className="h-full" initialContext={aiContext} />
+            </div>
+          )}
         </div>
       </div>
     </div>
