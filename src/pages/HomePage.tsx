@@ -4,43 +4,21 @@
 // ============================================
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useNavigate } from 'react-router-dom';
 import {
-  Volume2, VolumeX, RefreshCw, ChevronDown, ChevronRight, HelpCircle, X,
-  Monitor, CornerUpRight, BarChart3, Clock, Radar, Settings, Wifi, WifiOff,
-  Menu, LayoutGrid, LayoutList, ChevronUp, TrendingUp, Target, Zap, Bot
+  RefreshCw, Wifi, WifiOff,
+  Menu, Target, Zap, Bot, X
 } from 'lucide-react';
-// LeagueSidebar removed per P0 requirements
 import { AiChatPanel } from '../components/AiChatPanel';
-import { AdvancedMatchTable } from '../components/home/AdvancedMatchTable';
 import { MatchTableV2 } from '../components/home/MatchTableV2';
-import { DataStatsPanel } from '../components/home/DataStatsPanel';
-import { addToHistory, getHistoryStats } from '../services/matchHistoryService';
 import { useLiveMatchesAdvanced, useRefreshMatches } from '../hooks/useMatches';
 import { calculateDynamicScore, type ScoreResult } from '../services/scoringEngine';
 import type { AdvancedMatch } from '../data/advancedMockData';
 import { soundService } from '../services/soundService';
-import { isApiKeyConfigured } from '../services/api';
-import { ApiSettingsPanel } from '../components/settings/ApiSettingsPanel';
 import { MobileMenu } from '../components/layout/MobileMenu';
-import { AcceptanceReport } from '../components/home/AcceptanceReport';
-import { LateGameHunterPanel } from '../components/home/LateGameHunterPanel';
 import { LateHunterPanel } from '../components/home/LateHunterPanel';
 import { StrategyMonitorPanel, BUILTIN_STRATEGIES } from '../components/home/StrategyMonitorPanel';
 import { StrategyAlertMarquee } from '../components/home/StrategyAlertMarquee';
-import { getWatchlist, addToWatchlist, removeFromWatchlist } from '../services/battleRoomWatchlist';
-// Phase 2: Live Scanner Engine
-import {
-  scanMatches,
-  getMatchingMatches,
-  DEFAULT_SCANNER_CONFIG,
-  getRecommendationColor,
-  getRecommendationLabel,
-  type ScannerFilterConfig,
-  type ScannerResult,
-  type MatchInput,
-} from '../services/liveScannerEngine';
 
 // ============================================
 // 类型定义
@@ -50,18 +28,13 @@ interface MatchWithScore extends AdvancedMatch {
   scoreResult: ScoreResult | null;
 }
 
-type ViewMode = 'card' | 'table';
-
-type LiveViewMode = 'OPPORTUNITIES' | 'ALL_LIVE';
-
 type OddsMode = 'ALL' | 'WITH_LIVE' | 'WITHOUT_LIVE';
 
 interface Filters {
   league: string;
   minMinute: number;
-  showAll: boolean; // 显示所有比赛还是只显示75+
-  scannerMode: boolean; // Phase 2: 失衡扫描器模式
-  oddsMode: OddsMode; // 滚球盘口筛选：全部 / 有滚球 / 无滚球
+  showAll: boolean;
+  oddsMode: OddsMode;
 }
 
 // ============================================
@@ -168,36 +141,21 @@ export function HomePage() {
   const parentRef = useRef<HTMLDivElement>(null);
 
   // 状态
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
-  const [showStats, setShowStats] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [watchedMatches, setWatchedMatches] = useState<Set<number>>(new Set());
-  const [liveViewMode, setLiveViewMode] = useState<LiveViewMode>('ALL_LIVE');
 
   // 简化的筛选器 - 默认显示全部比赛
   const [filters, setFilters] = useState<Filters>({
     league: 'ALL',
     minMinute: 0,
-    showAll: true, // 默认显示全部，用户可选择75+或80+筛选
-    scannerMode: false, // Phase 2: 失衡扫描器模式
-    oddsMode: 'ALL', // 默认不过滤盘口类型
+    showAll: true,
+    oddsMode: 'ALL',
   });
 
-  // 筛选模型状态（替换旧的顶部筛选条）
+  // 筛选模型状态
   const [showFilterModel, setShowFilterModel] = useState(false);
   const [filterModelDraft, setFilterModelDraft] = useState<FilterModelState>(DEFAULT_FILTER_MODEL);
   const [filterModelApplied, setFilterModelApplied] = useState<FilterModelState>(DEFAULT_FILTER_MODEL);
-
-  // Phase 2: 扫描器配置
-  const [scannerConfig, setScannerConfig] = useState<Partial<ScannerFilterConfig>>({
-    minMinute: 75,
-    maxGoalDiff: 1,
-    minXgDiff: 0.5,
-    minShotsDiff: 5,
-  });
 
   // 数据获取
   const { data: matchesData, isLoading, error, refetch, liveMatches } = useLiveMatchesAdvanced();
@@ -243,31 +201,15 @@ export function HomePage() {
     return () => clearInterval(id);
   }, []);
 
-  // 初始化 watchlist（从本地存储加载）
-  useEffect(() => {
-    const ids = getWatchlist();
-    if (ids && ids.length > 0) {
-      setWatchedMatches(new Set(ids));
-    }
-  }, []);
-
-  // 是否使用新表格 V2
-  const [useTableV2, setUseTableV2] = useState(true);
-
-  // Phase 2A: 显示验收报告
-  const [showAcceptanceReport, setShowAcceptanceReport] = useState(false);
 
   // 处理比赛数据 - 过滤已结束比赛，保存到历史
   const processedMatches = useMemo(() => {
     const rawAll = matchesData?.matches ?? [];
 
-    const base: AdvancedMatch[] =
-      liveViewMode === 'ALL_LIVE'
-        ? rawAll.filter((m) => {
-            const s = String(m.status).toLowerCase();
-            return s !== 'ns' && s !== 'ft';
-          })
-        : (liveMatches ?? []);
+    const base: AdvancedMatch[] = rawAll.filter((m) => {
+      const s = String(m.status).toLowerCase();
+      return s !== 'ns' && s !== 'ft';
+    });
 
     const all = base;
 
@@ -303,11 +245,6 @@ export function HomePage() {
       } else {
         liveWithScores.push(match);
       }
-    }
-
-    // 将已结束的比赛保存到历史（副作用，在 useEffect 中处理更好，但这里简化处理）
-    for (const match of finishedMatches) {
-      addToHistory(match, match.scoreResult);
     }
 
     let filtered = liveWithScores;
@@ -396,38 +333,7 @@ export function HomePage() {
     });
 
     return filtered;
-  }, [liveMatches, matchesData, filterModelApplied, liveViewMode]);
-
-  // Phase 2: 扫描器结果
-  const scannerResults = useMemo(() => {
-    const matchInputs: MatchInput[] = processedMatches.map(m => ({
-      id: m.id,
-      minute: m.minute,
-      status: m.status,
-      homeScore: m.home?.score ?? 0,
-      awayScore: m.away?.score ?? 0,
-      stats: m.stats ? {
-        shots: m.stats.shots,
-        shotsOnTarget: m.stats.shotsOnTarget,
-        corners: m.corners ?? { home: 0, away: 0 },  // 使用顶层 corners 字段
-        possession: m.stats.possession,
-        xG: m.stats.xG,
-        _realDataAvailable: m.stats._realDataAvailable,
-      } : null,
-      imbalance: (m as any).imbalance,
-    }));
-
-    const results = scanMatches(matchInputs, scannerConfig);
-    const matching = results.filter(r => r.result.isMatch);
-
-    return {
-      all: results,
-      matching,
-      matchingIds: new Set(matching.map(r => r.match.id)),
-      totalMatches: results.length,
-      matchingCount: matching.length,
-    };
-  }, [processedMatches, scannerConfig]);
+  }, [liveMatches, matchesData, filterModelApplied]);
 
   // 统计数据
   const stats = useMemo(() => {
@@ -461,31 +367,8 @@ export function HomePage() {
       signals: signalMatches.length,
       firstHalf: all.filter(m => m.minute <= 45 || m.status?.toLowerCase() === 'ht').length,
       high80: high80Matches.length,
-      // Phase 2: 扫描命中数
-      scannerHits: 0, // 会在 scannerResults 中更新
     };
   }, [liveMatches]);
-
-  // Phase 2: 更新扫描命中统计
-  const statsWithScanner = useMemo(() => ({
-    ...stats,
-    scannerHits: scannerResults.matchingCount,
-  }), [stats, scannerResults]);
-
-  // 切换关注
-  const toggleWatch = useCallback((matchId: number) => {
-    setWatchedMatches(prev => {
-      const next = new Set(prev);
-      if (next.has(matchId)) {
-        next.delete(matchId);
-        removeFromWatchlist(matchId);
-      } else {
-        next.add(matchId);
-        addToWatchlist(matchId);
-      }
-      return next;
-    });
-  }, []);
 
   // 刷新数据
   const handleRefresh = useCallback(() => {
@@ -560,12 +443,10 @@ export function HomePage() {
         </button>
 
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-xl font-black tracking-tight">
-            <span className="text-[#00d4ff]">LIVE</span>
-            <span className="text-[#e0e0e0]">PRO</span>
-          </span>
-        </Link>
+        <span className="text-xl font-black tracking-tight flex-shrink-0">
+          <span className="text-[#00d4ff]">LIVE</span>
+          <span className="text-[#e0e0e0]">PRO</span>
+        </span>
 
         {/* 状态指示 */}
         <div className="hidden sm:flex items-center gap-3 text-sm">
@@ -576,46 +457,6 @@ export function HomePage() {
 
         {/* 中间填充 */}
         <div className="flex-1" />
-
-        {/* 导航按钮组 - 恢复作战室和复盘台 */}
-        <nav className="hidden lg:flex items-center gap-2">
-          <Link
-            to="/battle"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-[#ff4444]/10 text-[#ff4444] hover:bg-[#ff4444]/20 border border-[#ff4444]/30 transition-all"
-          >
-            <Target className="w-4 h-4" />
-            <span>作战室</span>
-          </Link>
-          <Link
-            to="/review"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#888] hover:text-[#00d4ff] hover:bg-[#1a1a1a] transition-all"
-          >
-            <TrendingUp className="w-4 h-4" />
-            <span>复盘台</span>
-          </Link>
-          <Link
-            to="/corners"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#888] hover:text-[#00d4ff] hover:bg-[#1a1a1a] transition-all"
-          >
-            <CornerUpRight className="w-4 h-4" />
-            <span>角球</span>
-          </Link>
-          <Link
-            to="/ai"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#888] hover:text-[#c084fc] hover:bg-[#1a1a1a] border border-transparent hover:border-[#a855f7]/35 transition-all"
-            title="Minimax / 赛事上下文 AI 问答"
-          >
-            <Bot className="w-4 h-4" />
-            <span>AI 问答</span>
-          </Link>
-          <Link
-            to="/history"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#888] hover:text-[#00d4ff] hover:bg-[#1a1a1a] transition-all"
-          >
-            <Clock className="w-4 h-4" />
-            <span>历史</span>
-          </Link>
-        </nav>
 
         {/* 刷新按钮 */}
         <button
@@ -769,24 +610,6 @@ export function HomePage() {
             />
           </div>
 
-          {/* 统计面板 */}
-          {showStats && (
-            <div className="flex-shrink-0 border-b border-[#222]">
-              <DataStatsPanel matches={processedMatches} />
-            </div>
-          )}
-
-          {/* Phase 2A: 验收报告面板 */}
-          {showAcceptanceReport && (
-            <div className="flex-shrink-0 p-4 border-b border-[#222]">
-              <AcceptanceReport
-                matches={processedMatches}
-                onRefresh={handleRefresh}
-                isLoading={isLoading}
-              />
-            </div>
-          )}
-
           {/* 比赛列表 */}
           <div className="flex-1 overflow-auto p-4">
             {isLoading && processedMatches.length === 0 ? (
@@ -822,21 +645,13 @@ export function HomePage() {
                   )}
                 </div>
               </div>
-            ) : useTableV2 ? (
+            ) : (
               <MatchTableV2
                 matches={processedMatches}
-                onToggleWatch={toggleWatch}
-                watchedMatches={watchedMatches}
+                onToggleWatch={() => {}}
+                watchedMatches={new Set()}
                 filters={{ oddsMode: 'ALL' }}
                 showImbalanceColumns={false}
-              />
-            ) : (
-              <AdvancedMatchTable
-                matches={processedMatches.map(m => ({
-                  ...m,
-                  isWatched: watchedMatches.has(m.id),
-                }))}
-                onToggleWatch={toggleWatch}
               />
             )}
           </div>
@@ -927,7 +742,7 @@ function RightSidePanel({ processedMatches, onMatchClick }: {
           {tab === 'ai' && <AiChatPanel className="h-full" />}
           {tab === 'hunter' && (
             <div className="h-full overflow-auto p-2">
-              <LateGameHunterPanel matches={processedMatches} onMatchClick={onMatchClick} />
+              <LateHunterPanel matches={processedMatches} onMatchClick={onMatchClick} />
             </div>
           )}
           {tab === 'strategy' && <StrategyMonitorPanel matches={processedMatches} onMatchClick={onMatchClick} />}

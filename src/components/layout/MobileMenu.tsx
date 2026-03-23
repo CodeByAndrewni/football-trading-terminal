@@ -4,7 +4,7 @@
 
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { X, Home, Swords, CornerUpRight, Settings, Wifi, WifiOff, BarChart3, FileText, Bot } from 'lucide-react';
+import { X, Home, Settings, Wifi, WifiOff, Bot } from 'lucide-react';
 import { isApiKeyConfigured } from '../../services/api';
 
 interface MobileMenuProps {
@@ -42,10 +42,6 @@ export function MobileMenu({ isOpen, onClose, onOpenSettings }: MobileMenuProps)
 
   const navItems = [
     { path: '/', label: '比赛大厅', icon: Home },
-    { path: '/battle', label: '作战室', icon: Swords, highlight: true },
-    { path: '/review', label: '复盘台', icon: FileText },
-    { path: '/corners', label: '角球分析', icon: CornerUpRight },
-    { path: '/backtest', label: '盘口回测', icon: BarChart3 },
     { path: '/ai', label: 'AI 问答', icon: Bot },
   ];
 
@@ -78,7 +74,7 @@ export function MobileMenu({ isOpen, onClose, onOpenSettings }: MobileMenuProps)
 
         {/* 导航链接 */}
         <nav className="p-4 space-y-2">
-          {navItems.map(({ path, label, icon: Icon, highlight }) => {
+          {navItems.map(({ path, label, icon: Icon }) => {
             const isActive = location.pathname === path;
             return (
               <Link
@@ -88,8 +84,6 @@ export function MobileMenu({ isOpen, onClose, onOpenSettings }: MobileMenuProps)
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                   isActive
                     ? 'bg-accent-primary/10 text-accent-primary border-l-2 border-accent-primary'
-                    : highlight
-                    ? 'text-accent-danger bg-accent-danger/5 hover:bg-accent-danger/10'
                     : 'text-text-secondary hover:bg-bg-component hover:text-text-primary'
                 }`}
               >

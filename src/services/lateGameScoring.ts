@@ -3,7 +3,11 @@
 // Version: 139
 // ============================================
 
-import { TIME_DECAY_CONFIG } from '../config/battleRoomConstants';
+const TIME_DECAY_CONFIG = {
+  phaseMultipliers: { early: 0.8, mid: 1.0, late: 1.3, extraLate: 1.6 },
+  fatiguePerMinute: 0.02,
+  desperationBonus: 0.15,
+};
 
 // ============================================
 // 类型定义
