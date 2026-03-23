@@ -33,6 +33,8 @@ import {
 import { CompactScenarioTag } from "../ui/ScenarioTag";
 import { STRATEGY_CONFIG } from "../../config/strategyConfig";
 import { BUILTIN_STRATEGIES } from "./StrategyMonitorPanel";
+import { getActiveScenarios } from "../../services/modules/scenarioEngine";
+import { aggregateScenarioSignals, type CompositeSignal } from "../../services/compositeSignal";
 import { SimpleOddsBadge } from "../ui/OddsMovementBadge";
 // v161: 积分榜服务 + 声音通知
 import { batchGetMatchStrengths, type MatchStrengthMap } from "../../hooks/useStandings";
@@ -324,19 +326,18 @@ export function MatchTableV2({
       );
     }
 
-    // 策略命中检测：任一内置策略命中则置顶
-    const strategyHitSet = new Set<number>();
+    // 情景引擎 composite score 计算（含旧策略兼容）
+    const compositeMap = new Map<number, CompositeSignal>();
     for (const m of filteredMatches) {
-      if (BUILTIN_STRATEGIES.some(s => s.filter(m))) {
-        strategyHitSet.add(m.id);
-      }
+      const active = getActiveScenarios(m);
+      compositeMap.set(m.id, aggregateScenarioSignals(active));
     }
 
     return filteredMatches.sort((a, b) => {
-      // 策略命中始终置顶
-      const aHit = strategyHitSet.has(a.id) ? 1 : 0;
-      const bHit = strategyHitSet.has(b.id) ? 1 : 0;
-      if (aHit !== bHit) return bHit - aHit;
+      // 情景引擎 compositeScore 置顶
+      const aComp = compositeMap.get(a.id)?.compositeScore ?? 0;
+      const bComp = compositeMap.get(b.id)?.compositeScore ?? 0;
+      if (aComp !== bComp) return bComp - aComp;
 
       if (sortField === "score") {
         const aScore = a.lateSignal?.score ?? a.moduleASignal?.score ?? a.scoreResult?.totalScore ?? 0;
@@ -678,7 +679,8 @@ const MatchRow = memo(function MatchRow({
   const hasRedCard = (match.cards?.red?.home ?? 0) + (match.cards?.red?.away ?? 0) > 0;
   const totalGoals = (match.home?.score ?? 0) + (match.away?.score ?? 0);
 
-  const isStrategyHit = useMemo(() => BUILTIN_STRATEGIES.some(s => s.filter(match)), [match]);
+  const scenarioHits = useMemo(() => getActiveScenarios(match), [match]);
+  const isStrategyHit = scenarioHits.length > 0 || BUILTIN_STRATEGIES.some(s => s.filter(match));
 
   const getRowStyle = () => {
     const action = lateSignal?.action ?? moduleASignal?.action;

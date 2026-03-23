@@ -118,6 +118,12 @@ export interface AdvancedMatch {
     teamStatsHome?: unknown;
     teamStatsAway?: unknown;
   };
+
+  // === 情景引擎派生字段 ===
+  stoppageTimeAnnounced?: number | null;
+  halfStatsDelta?: { shotsDelta: number; xgDelta: number; cornersDelta: number } | null;
+  subsAfter70Attack?: number;
+  needsWinProxy?: 'home' | 'away' | 'both' | null;
 }
 
 // === 结构失衡指标 (Phase 2) ===
@@ -1046,6 +1052,49 @@ export function aggregateMatches(
 
         match.initialHandicap = initialHandicap;
         match.initialOverUnder = initialOverUnder;
+      }
+
+      // === 情景引擎派生字段 ===
+      match.stoppageTimeAnnounced = fixture.fixture.status.extra ?? null;
+
+      // 下半场统计增量：粗略用"全场总量 - 半场推测"计算
+      if (match.stats?._realDataAvailable && match.halftimeScore && match.minute > 45) {
+        const htGoalsHome = match.halftimeScore.home ?? 0;
+        const htGoalsAway = match.halftimeScore.away ?? 0;
+        const htTotalGoals = htGoalsHome + htGoalsAway;
+        const ftTotalGoals = match.home.score + match.away.score;
+        const totalShots = (match.stats.shots?.home ?? 0) + (match.stats.shots?.away ?? 0);
+        const totalXG = (match.stats.xG?.home ?? 0) + (match.stats.xG?.away ?? 0);
+        const totalCorners = (match.stats.corners?.home ?? 0) + (match.stats.corners?.away ?? 0);
+        // 用进球比例近似半场射门/xG/角球占比
+        const htRatio = ftTotalGoals > 0 ? htTotalGoals / ftTotalGoals : 0.5;
+        const estimatedHtShots = Math.round(totalShots * htRatio);
+        const estimatedHtXG = totalXG * htRatio;
+        const estimatedHtCorners = Math.round(totalCorners * htRatio);
+        match.halfStatsDelta = {
+          shotsDelta: totalShots - estimatedHtShots - estimatedHtShots,
+          xgDelta: totalXG - estimatedHtXG - estimatedHtXG,
+          cornersDelta: totalCorners - estimatedHtCorners - estimatedHtCorners,
+        };
+      }
+
+      // 70分钟后攻击型换人数
+      if (match.substitutions && match.substitutions.length > 0) {
+        match.subsAfter70Attack = match.substitutions.filter(
+          s => s.minute >= 70 && s.type === 'attack'
+        ).length;
+      }
+
+      // 争胜压力代理：排名前3争冠 / 后3保级
+      const homeRank = match.home.rank;
+      const awayRank = match.away.rank;
+      if (typeof homeRank === 'number' && typeof awayRank === 'number') {
+        const homeNeedsWin = homeRank <= 3 || homeRank >= 16;
+        const awayNeedsWin = awayRank <= 3 || awayRank >= 16;
+        if (homeNeedsWin && awayNeedsWin) match.needsWinProxy = 'both';
+        else if (homeNeedsWin) match.needsWinProxy = 'home';
+        else if (awayNeedsWin) match.needsWinProxy = 'away';
+        else match.needsWinProxy = null;
       }
 
       // === 数据质量标记 ===

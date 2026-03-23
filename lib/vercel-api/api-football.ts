@@ -18,7 +18,7 @@ export interface Match {
     timestamp: number;
     periods: { first: number | null; second: number | null };
     venue: { id: number | null; name: string; city: string };
-    status: { long: string; short: string; elapsed: number | null };
+    status: { long: string; short: string; elapsed: number | null; extra?: number | null };
   };
   league: {
     id: number;

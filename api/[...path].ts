@@ -16,6 +16,10 @@ import toolsBundleRoute from '../lib/vercel-api/tools-bundle-route.js';
 import supabaseHeartbeatRoute from '../lib/vercel-api/supabase-heartbeat-route.js';
 import translateNamesCronRoute from '../lib/vercel-api/translate-names-cron-route.js';
 import dataAuditRoute from '../lib/vercel-api/data-audit-route.js';
+import lateGoalCollectRoute from '../lib/vercel-api/late-goal-collect-route.js';
+import paperTradeRoute from '../lib/vercel-api/paper-trade-route.js';
+import paperTradeSettleRoute from '../lib/vercel-api/paper-trade-settle-route.js';
+import paperTradeScanRoute from '../lib/vercel-api/paper-trade-scan-route.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawPathname = new URL(req.url || '/', 'http://localhost').pathname;
@@ -36,6 +40,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (pathname === '/api/supabase-heartbeat') return supabaseHeartbeatRoute(req, res);
     if (pathname === '/api/cron/translate-names') return translateNamesCronRoute(req, res);
     if (pathname === '/api/data-audit') return dataAuditRoute(req, res);
+    if (pathname === '/api/cron/late-goal-collect') return lateGoalCollectRoute(req, res);
+    if (pathname === '/api/paper-trade') return paperTradeRoute(req, res);
+    if (pathname === '/api/paper-trade/settle') return paperTradeSettleRoute(req, res);
+    if (pathname === '/api/paper-trade/scan') return paperTradeScanRoute(req, res);
 
     return res.status(404).json({
       success: false,

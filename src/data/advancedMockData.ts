@@ -76,6 +76,11 @@ export interface OddsInfo {
     draw: number | null;
     away: number | null;
   };
+  // 双方进球（可选）
+  bothTeamsScore?: {
+    yes: number | null;
+    no: number | null;
+  };
   // Phase 1.5: 赔率元数据
   _source?: 'API-Football' | 'GENERATED' | 'N/A' | string;
   _bookmaker?: string;
@@ -229,6 +234,20 @@ export interface AdvancedMatch {
     teamStatsHome?: unknown;
     teamStatsAway?: unknown;
   };
+
+  // ============================================
+  // 情景引擎派生字段（aggregator 计算）
+  // ============================================
+  /** 官方宣布的补时分钟数（来自 fixture.status.extra） */
+  stoppageTimeAnnounced?: number | null;
+  /** 下半场相对上半场的统计增量（射门/xG/角球） */
+  halfStatsDelta?: { shotsDelta: number; xgDelta: number; cornersDelta: number } | null;
+  /** 70 分钟后的攻击型换人数 */
+  subsAfter70Attack?: number;
+  /** 争胜压力代理：基于排名推算（前 3 争冠 / 后 3 保级） */
+  needsWinProxy?: 'home' | 'away' | 'both' | null;
+  /** 联赛轮次原始字符串（来自 API-Football league.round） */
+  round?: string;
 }
 
 // 比赛事件类型

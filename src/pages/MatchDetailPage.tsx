@@ -11,6 +11,8 @@ import { LEAGUE_COLORS } from '../data/advancedMockData';
 import { useMatchAdvanced } from '../hooks/useMatches';
 import { formatLeagueWithCountry } from '../utils/leagueDisplay';
 import { AiChatPanel } from '../components/AiChatPanel';
+import { getActiveScenarios } from '../services/modules/scenarioEngine';
+import { aggregateScenarioSignals, formatCompositeForAI } from '../services/compositeSignal';
 
 // ============================================
 // Helper: format display value, show "-" when missing
@@ -78,6 +80,14 @@ function buildMatchContext(m: AdvancedMatch): string {
   if (m.cards?.red && ((m.cards.red.home ?? 0) + (m.cards.red.away ?? 0) > 0)) {
     lines.push(`红牌: 主 ${m.cards.red.home ?? 0} / 客 ${m.cards.red.away ?? 0}`);
   }
+
+  // 情景引擎分析
+  const activeScenarios = getActiveScenarios(m);
+  if (activeScenarios.length > 0) {
+    const composite = aggregateScenarioSignals(activeScenarios);
+    lines.push('', formatCompositeForAI(composite));
+  }
+
   lines.push('', '你可以直接问「这场该不该进？」「大球还是小球？」等问题。');
   return lines.join('\n');
 }

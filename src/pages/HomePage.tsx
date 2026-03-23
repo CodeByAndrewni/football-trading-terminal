@@ -7,7 +7,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   RefreshCw, Wifi, WifiOff,
-  Menu, Target, Zap, Bot, X
+  Menu, Target, Zap, Bot, X, TrendingUp
 } from 'lucide-react';
 import { AiChatPanel } from '../components/AiChatPanel';
 import { MatchTableV2 } from '../components/home/MatchTableV2';
@@ -19,6 +19,8 @@ import { MobileMenu } from '../components/layout/MobileMenu';
 import { LateHunterPanel } from '../components/home/LateHunterPanel';
 import { StrategyMonitorPanel, BUILTIN_STRATEGIES } from '../components/home/StrategyMonitorPanel';
 import { StrategyAlertMarquee } from '../components/home/StrategyAlertMarquee';
+import { usePaperTradeMonitor } from '../hooks/usePaperTrade';
+import { isPaperTradeEnabled, setPaperTradeEnabled } from '../config/paperTradeConfig';
 
 // ============================================
 // 类型定义
@@ -156,6 +158,9 @@ export function HomePage() {
   const [showFilterModel, setShowFilterModel] = useState(false);
   const [filterModelDraft, setFilterModelDraft] = useState<FilterModelState>(DEFAULT_FILTER_MODEL);
   const [filterModelApplied, setFilterModelApplied] = useState<FilterModelState>(DEFAULT_FILTER_MODEL);
+
+  // Paper Trading
+  const [paperTradeOn, setPaperTradeOn] = useState(isPaperTradeEnabled);
 
   // 数据获取
   const { data: matchesData, isLoading, error, refetch, liveMatches } = useLiveMatchesAdvanced();
@@ -306,6 +311,11 @@ export function HomePage() {
     return filtered;
   }, [liveMatches, matchesData, filterModelApplied]);
 
+  // Paper Trading 自动监控
+  const { recentEvents: paperEvents, totalTriggered: paperTriggered } = usePaperTradeMonitor(
+    paperTradeOn ? (liveMatches ?? []) : []
+  );
+
   // 统计数据
   const stats = useMemo(() => {
     const all = liveMatches ?? [];
@@ -428,6 +438,38 @@ export function HomePage() {
 
         {/* 中间填充 */}
         <div className="flex-1" />
+
+        {/* Paper Trading 开关 + 入口 */}
+        <div className="hidden sm:flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !paperTradeOn;
+              setPaperTradeOn(next);
+              setPaperTradeEnabled(next);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              paperTradeOn
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                : 'bg-[#1a1a1a] text-[#666] border border-[#333] hover:text-[#aaa]'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            模拟交易{paperTradeOn ? ' ON' : ''}
+            {paperTriggered > 0 && (
+              <span className="bg-emerald-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                {paperTriggered}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/paper-trade')}
+            className="px-2 py-1.5 rounded-lg text-[10px] text-[#888] hover:text-[#ccc] bg-[#1a1a1a] hover:bg-[#222] transition-all"
+          >
+            复盘
+          </button>
+        </div>
 
         {/* 刷新按钮 */}
         <button

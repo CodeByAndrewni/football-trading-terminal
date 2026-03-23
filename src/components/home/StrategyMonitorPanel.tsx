@@ -1,5 +1,5 @@
 /**
- * 策略监控面板 — 可扩展多策略，实时筛选 + 命中提醒 + 声音
+ * 策略监控面板 — 20 情景引擎驱动，按三大类分组，实时命中提醒 + 声音
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -7,9 +7,11 @@ import { Bell, BellOff, ChevronDown, ChevronRight, Volume2 } from 'lucide-react'
 import type { AdvancedMatch } from '../../data/advancedMockData';
 import { soundService } from '../../services/soundService';
 import { formatLeagueWithCountry } from '../../utils/leagueDisplay';
+import { getActiveScenarios, type ScenarioSignal } from '../../services/modules/scenarioEngine';
+import { SCENARIO_META, type ScenarioId, type ScenarioCategory } from '../../config/scenarioConfig';
 
 // ---------------------------------------------------------------------------
-// Strategy definition
+// Legacy exports for backward-compat (MatchTableV2 still imports these)
 // ---------------------------------------------------------------------------
 
 export interface StrategyDef {
@@ -17,173 +19,51 @@ export interface StrategyDef {
   label: string;
   emoji: string;
   desc: string;
-  /** Return true if the match satisfies this strategy */
   filter: (m: AdvancedMatch) => boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Built-in strategies
-// ---------------------------------------------------------------------------
-
-/**
- * 让球方末段落后
- * - 初始大小球 ≥ 3.5
- * - 让球盘 |value| = 1（即 -1 或 +1）
- * - 上半场至少进 1 球
- * - 下半场双方各进至少 1 球
- * - 75-88 分钟，让球方落后恰好 1 球
- *
- * 数据缺失（无初始盘口等）的比赛自动排除，不报错。
- */
-function favoriteTrailingLate(m: AdvancedMatch): boolean {
-  const minute = m.minute ?? 0;
-  if (minute < 75 || minute > 88) return false;
-
-  const initOU = m.initialOverUnder;
-  if (typeof initOU !== 'number' || initOU < 3.5) return false;
-
-  const hdpValue = m.initialHandicap ?? m.odds?.handicap?.value ?? null;
-  if (typeof hdpValue !== 'number') return false;
-  const absHdp = Math.abs(hdpValue);
-  if (absHdp < 0.75 || absHdp > 1.25) return false;
-
-  const ht = m.halftimeScore;
-  if (!ht || (ht.home ?? 0) + (ht.away ?? 0) < 1) return false;
-
-  const hTotal = m.home?.score ?? 0;
-  const aTotal = m.away?.score ?? 0;
-  const hHalf = ht.home ?? 0;
-  const aHalf = ht.away ?? 0;
-  const h2nd = hTotal - hHalf;
-  const a2nd = aTotal - aHalf;
-  if (h2nd < 1 || a2nd < 1) return false;
-
-  // hdpValue < 0 → home is favorite; hdpValue > 0 → away is favorite
-  const favScore = hdpValue < 0 ? hTotal : aTotal;
-  const undScore = hdpValue < 0 ? aTotal : hTotal;
-  if (favScore !== undScore - 1) return false;
-
-  return true;
-}
-
-/**
- * 红牌比赛
- * 场上任一方出现红牌即命中，不限时间、不限联赛。
- */
-function hasRedCard(m: AdvancedMatch): boolean {
-  const red = m.cards?.red;
-  if (!red) return false;
-  return (red.home ?? 0) + (red.away ?? 0) > 0;
-}
-
-function isOverSprint(m: AdvancedMatch): boolean {
-  if (m.minute < 65) return false;
-  const xgTotal = (m.stats?.xG?.home ?? 0) + (m.stats?.xG?.away ?? 0);
-  const goals = (m.home?.score ?? 0) + (m.away?.score ?? 0);
-  const xgDebt = xgTotal - goals;
-  const shotsTotal = (m.stats?.shots?.home ?? 0) + (m.stats?.shots?.away ?? 0);
-  return xgDebt >= 0.8 && shotsTotal >= 15 && m.stats?._realDataAvailable === true;
-}
-
-function isStrongBehind(m: AdvancedMatch): boolean {
-  if (m.minute < 65) return false;
-  const hdp = m.initialHandicap;
-  if (typeof hdp !== 'number') return false;
-  const homeScore = m.home?.score ?? 0;
-  const awayScore = m.away?.score ?? 0;
-  // hdp < 0 means home is favorite
-  if (hdp < -0.5 && homeScore <= awayScore) return true;
-  if (hdp > 0.5 && awayScore <= homeScore) return true;
-  return false;
-}
-
-function isDeadlockBreak(m: AdvancedMatch): boolean {
-  if (m.minute < 70) return false;
-  const goals = (m.home?.score ?? 0) + (m.away?.score ?? 0);
-  if (goals > 1) return false;
-  const shotsTotal = (m.stats?.shots?.home ?? 0) + (m.stats?.shots?.away ?? 0);
-  return shotsTotal >= 12 && m.stats?._realDataAvailable === true;
-}
-
-function isWeakDefend(m: AdvancedMatch): boolean {
-  if (m.minute < 70) return false;
-  const hdp = m.initialHandicap;
-  if (typeof hdp !== 'number') return false;
-  const homeScore = m.home?.score ?? 0;
-  const awayScore = m.away?.score ?? 0;
-  // hdp < 0 means home is favorite; weak = away
-  if (hdp < -0.5 && awayScore > homeScore) return true;
-  if (hdp > 0.5 && homeScore > awayScore) return true;
-  return false;
-}
-
-export const BUILTIN_STRATEGIES: StrategyDef[] = [
-  {
-    id: 'favorite_trailing_80',
-    label: '让球方末段落后',
-    emoji: '🎯',
-    desc: '初盘O/U≥3.5 · 让球±1 · 半场有球 · 下半场双方各进≥1 · 75-88\'让球方落后1球',
-    filter: favoriteTrailingLate,
+export const BUILTIN_STRATEGIES: StrategyDef[] = Object.values(SCENARIO_META).map(meta => ({
+  id: meta.id,
+  label: meta.label,
+  emoji: meta.emoji,
+  desc: meta.desc,
+  filter: (m: AdvancedMatch) => {
+    const signals = getActiveScenarios(m);
+    return signals.some(s => s.id === meta.id);
   },
-  {
-    id: 'red_card_alert',
-    label: '红牌比赛',
-    emoji: '🟥',
-    desc: '场上任一方出现红牌',
-    filter: hasRedCard,
-  },
-  {
-    id: 'over_sprint',
-    label: '大球冲刺',
-    emoji: '🚀',
-    desc: '65\'+ · xG 债务≥0.8 · 总射门≥15 · 有真实数据',
-    filter: isOverSprint,
-  },
-  {
-    id: 'strong_behind',
-    label: '强队反扑',
-    emoji: '💪',
-    desc: '65\'+ · 让球方当前落后或平局',
-    filter: isStrongBehind,
-  },
-  {
-    id: 'deadlock_break',
-    label: '闷平破局',
-    emoji: '🔓',
-    desc: '70\'+ · 总进球≤1 · 总射门≥12 · 有真实数据',
-    filter: isDeadlockBreak,
-  },
-  {
-    id: 'weak_defend',
-    label: '弱队死守',
-    emoji: '🛡️',
-    desc: '70\'+ · 非让球方当前领先',
-    filter: isWeakDefend,
-  },
-];
+}));
 
 // ---------------------------------------------------------------------------
-// Alert tracking — remember which (strategy, matchId) has already fired
+// Internal types
 // ---------------------------------------------------------------------------
 
-type AlertKey = string; // `${strategyId}:${matchId}`
+type AlertKey = string;
 
 interface AlertRecord {
   key: AlertKey;
-  strategyId: string;
-  strategyLabel: string;
-  strategyEmoji: string;
+  scenarioId: ScenarioId;
+  scenarioLabel: string;
+  scenarioEmoji: string;
   matchId: number;
   homeName: string;
   awayName: string;
   score: string;
   minute: number;
   league: string;
+  signalScore: number;
   ts: number;
 }
 
+const CATEGORY_LABELS: Record<ScenarioCategory, { label: string; emoji: string }> = {
+  match_state: { label: '比赛状态', emoji: '⚽' },
+  momentum: { label: '场面/体能', emoji: '💪' },
+  price_psychology: { label: '补时/心理/价格', emoji: '💰' },
+};
+
+const CATEGORY_ORDER: ScenarioCategory[] = ['match_state', 'momentum', 'price_psychology'];
+
 // ---------------------------------------------------------------------------
-// Panel props
+// Panel
 // ---------------------------------------------------------------------------
 
 interface Props {
@@ -192,86 +72,75 @@ interface Props {
 }
 
 export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
-  const [enabledIds, setEnabledIds] = useState<Set<string>>(
-    () => new Set(BUILTIN_STRATEGIES.map((s) => s.id)),
-  );
-  const [expandedId, setExpandedId] = useState<string | null>(BUILTIN_STRATEGIES[0]?.id ?? null);
+  const [expandedCategory, setExpandedCategory] = useState<ScenarioCategory | null>('match_state');
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const firedRef = useRef<Set<AlertKey>>(new Set());
   const [soundOn, setSoundOn] = useState(true);
 
-  const toggle = useCallback((id: string) => {
-    setEnabledIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  // Per-scenario hits across all matches
+  const { hitsByScenario, hitsByCategory, totalHits } = useMemo(() => {
+    const byScenario = new Map<ScenarioId, Array<{ match: AdvancedMatch; signal: ScenarioSignal }>>();
+    const byCategory: Record<ScenarioCategory, number> = { match_state: 0, momentum: 0, price_psychology: 0 };
+    let total = 0;
 
-  // Per-strategy hits
-  const hitsMap = useMemo(() => {
-    const m = new Map<string, AdvancedMatch[]>();
-    for (const s of BUILTIN_STRATEGIES) {
-      if (!enabledIds.has(s.id)) {
-        m.set(s.id, []);
-        continue;
+    for (const m of matches) {
+      const active = getActiveScenarios(m);
+      for (const sig of active) {
+        const list = byScenario.get(sig.id) ?? [];
+        list.push({ match: m, signal: sig });
+        byScenario.set(sig.id, list);
+        byCategory[sig.category]++;
+        total++;
       }
-      m.set(s.id, matches.filter(s.filter));
     }
-    return m;
-  }, [matches, enabledIds]);
+
+    return { hitsByScenario: byScenario, hitsByCategory: byCategory, totalHits: total };
+  }, [matches]);
 
   // Fire alerts for new hits
   useEffect(() => {
     let hasNew = false;
-    for (const s of BUILTIN_STRATEGIES) {
-      if (!enabledIds.has(s.id)) continue;
-      const hits = hitsMap.get(s.id) ?? [];
-      for (const h of hits) {
-        const key: AlertKey = `${s.id}:${h.id}`;
+    for (const [scenarioId, hits] of hitsByScenario) {
+      for (const { match: h, signal: sig } of hits) {
+        const key: AlertKey = `${scenarioId}:${h.id}`;
         if (firedRef.current.has(key)) continue;
         firedRef.current.add(key);
         hasNew = true;
         const rec: AlertRecord = {
           key,
-          strategyId: s.id,
-          strategyLabel: s.label,
-          strategyEmoji: s.emoji,
+          scenarioId,
+          scenarioLabel: sig.label,
+          scenarioEmoji: sig.emoji,
           matchId: h.id,
           homeName: h.home?.name ?? '?',
           awayName: h.away?.name ?? '?',
           score: `${h.home?.score ?? 0}-${h.away?.score ?? 0}`,
           minute: h.minute ?? 0,
           league: formatLeagueWithCountry(h),
+          signalScore: sig.score,
           ts: Date.now(),
         };
-        setAlerts((prev) => [rec, ...prev].slice(0, 50));
+        setAlerts(prev => [rec, ...prev].slice(0, 50));
       }
     }
     if (hasNew && soundOn) {
       soundService.play('alert');
     }
-  }, [hitsMap, enabledIds, soundOn]);
+  }, [hitsByScenario, soundOn]);
 
-  // Request notification permission once
   useEffect(() => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, []);
 
-  const totalHits = useMemo(
-    () => Array.from(hitsMap.values()).reduce((a, b) => a + b.length, 0),
-    [hitsMap],
-  );
-
   return (
     <div className="h-full flex flex-col text-sm select-text">
       {/* Header */}
       <div className="flex-none flex items-center justify-between px-3 py-2 border-b border-[#222]">
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-semibold text-white">策略监控</span>
+          <span className="text-xs font-semibold text-white">情景监控</span>
+          <span className="text-[10px] text-[#666]">20 策略</span>
           {totalHits > 0 && (
             <span className="bg-red-500/90 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none animate-pulse">
               {totalHits}
@@ -280,7 +149,7 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
         </div>
         <button
           type="button"
-          onClick={() => setSoundOn((p) => !p)}
+          onClick={() => setSoundOn(p => !p)}
           className={`p-1 rounded transition-colors ${soundOn ? 'text-accent-primary' : 'text-[#555]'}`}
           title={soundOn ? '提醒声音 ON' : '提醒声音 OFF'}
         >
@@ -291,7 +160,7 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
       {/* Alert banner */}
       {alerts.length > 0 && (
         <div className="flex-none border-b border-[#222] max-h-[120px] overflow-y-auto">
-          {alerts.slice(0, 5).map((a) => (
+          {alerts.slice(0, 5).map(a => (
             <button
               key={a.key}
               type="button"
@@ -300,7 +169,8 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
             >
               <div className="flex items-center gap-1.5 text-[11px]">
                 <Bell className="w-3 h-3 text-red-400 animate-pulse flex-shrink-0" />
-                <span className="text-red-400 font-medium">{a.strategyEmoji} {a.strategyLabel}</span>
+                <span className="text-red-400 font-medium">{a.scenarioEmoji} {a.scenarioLabel}</span>
+                <span className="text-[#888] font-mono">{a.signalScore}分</span>
                 <span className="text-[#666] ml-auto">{new Date(a.ts).toLocaleTimeString().slice(0, 5)}</span>
               </div>
               <div className="text-[11px] text-[#bbb] mt-0.5 truncate">
@@ -311,109 +181,109 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
         </div>
       )}
 
-      {/* Strategy cards */}
+      {/* Category groups */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-        {BUILTIN_STRATEGIES.map((s) => {
-          const hits = hitsMap.get(s.id) ?? [];
-          const enabled = enabledIds.has(s.id);
-          const expanded = expandedId === s.id;
+        {CATEGORY_ORDER.map(cat => {
+          const catMeta = CATEGORY_LABELS[cat];
+          const catHits = hitsByCategory[cat];
+          const expanded = expandedCategory === cat;
+          const scenarioIds = (Object.values(SCENARIO_META) as typeof SCENARIO_META[ScenarioId][])
+            .filter(m => m.category === cat)
+            .map(m => m.id);
 
           return (
             <div
-              key={s.id}
+              key={cat}
               className={`rounded-lg border transition-colors ${
-                enabled
-                  ? hits.length > 0
-                    ? 'border-red-500/40 bg-red-500/5'
-                    : 'border-[#333] bg-[#111]'
-                  : 'border-[#222] bg-[#0d0d0d] opacity-60'
+                catHits > 0
+                  ? 'border-red-500/40 bg-red-500/5'
+                  : 'border-[#333] bg-[#111]'
               }`}
             >
-              {/* Card header */}
-              <div className="flex items-center gap-2 px-3 py-2">
-                <button
-                  type="button"
-                  onClick={() => setExpandedId(expanded ? null : s.id)}
-                  className="flex-shrink-0 text-[#666] hover:text-white"
-                >
+              {/* Category header */}
+              <button
+                type="button"
+                onClick={() => setExpandedCategory(expanded ? null : cat)}
+                className="w-full flex items-center gap-2 px-3 py-2"
+              >
+                <span className="flex-shrink-0 text-[#666]">
                   {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                </button>
-                <span className="text-sm">{s.emoji}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-white truncate">{s.label}</div>
-                </div>
-                {hits.length > 0 && (
-                  <span className="bg-red-500/90 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
-                    {hits.length}
+                </span>
+                <span className="text-sm">{catMeta.emoji}</span>
+                <span className="text-xs font-medium text-white">{catMeta.label}</span>
+                <span className="text-[10px] text-[#666]">{scenarioIds.length} 个情景</span>
+                {catHits > 0 && (
+                  <span className="ml-auto bg-red-500/90 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                    {catHits}
                   </span>
                 )}
-                {/* Toggle */}
-                <button
-                  type="button"
-                  onClick={() => toggle(s.id)}
-                  className={`w-8 h-4 rounded-full relative transition-colors flex-shrink-0 ${
-                    enabled ? 'bg-accent-primary' : 'bg-[#333]'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
-                      enabled ? 'translate-x-4' : 'translate-x-0.5'
-                    }`}
-                  />
-                </button>
-              </div>
+              </button>
 
-              {/* Expanded body */}
+              {/* Expanded scenarios */}
               {expanded && (
-                <div className="px-3 pb-2">
-                  <p className="text-[10px] text-[#777] mb-2 leading-relaxed">{s.desc}</p>
-                  {!enabled && (
-                    <p className="text-[10px] text-[#555] text-center py-2">已关闭</p>
-                  )}
-                  {enabled && hits.length === 0 && (
-                    <p className="text-[10px] text-[#555] text-center py-2">暂无匹配 — 持续监控中…</p>
-                  )}
-                  {enabled && hits.length > 0 && (
-                    <div className="space-y-1">
-                      {hits.map((h) => (
-                        <button
-                          key={h.id}
-                          type="button"
-                          onClick={() => onMatchClick(h.id)}
-                          className="w-full text-left px-2.5 py-1.5 rounded bg-[#0d0d0d] hover:bg-[#181818] transition-colors"
-                        >
-                          <div className="flex items-center justify-between text-[10px]">
-                            <span className="text-[#888] truncate max-w-[120px]" title={formatLeagueWithCountry(h)}>
-                              {formatLeagueWithCountry(h)}
+                <div className="px-2 pb-2 space-y-1">
+                  {scenarioIds.map(sid => {
+                    const meta = SCENARIO_META[sid];
+                    const hits = hitsByScenario.get(sid) ?? [];
+
+                    return (
+                      <div
+                        key={sid}
+                        className={`rounded border px-2.5 py-1.5 ${
+                          hits.length > 0
+                            ? 'border-amber-500/30 bg-amber-500/5'
+                            : 'border-[#222] bg-[#0d0d0d]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px]">{meta.emoji}</span>
+                          <span className="text-[11px] font-medium text-[#ccc] flex-1">{meta.label}</span>
+                          {hits.length > 0 && (
+                            <span className="bg-amber-500/80 text-white text-[9px] font-bold rounded-full px-1 py-0.5 leading-none">
+                              {hits.length}
                             </span>
-                            <span className="text-accent-primary font-mono">{h.minute}'</span>
+                          )}
+                        </div>
+                        <p className="text-[9px] text-[#666] mt-0.5 leading-relaxed">{meta.desc}</p>
+
+                        {/* Hit matches */}
+                        {hits.length > 0 && (
+                          <div className="mt-1 space-y-0.5">
+                            {hits.map(({ match: h, signal: sig }) => (
+                              <button
+                                key={h.id}
+                                type="button"
+                                onClick={() => onMatchClick(h.id)}
+                                className="w-full text-left px-2 py-1 rounded bg-[#0d0d0d] hover:bg-[#181818] transition-colors"
+                              >
+                                <div className="flex items-center justify-between text-[10px]">
+                                  <span className="text-[#888] truncate max-w-[100px]">{formatLeagueWithCountry(h)}</span>
+                                  <span className="text-accent-primary font-mono">{h.minute}' · {sig.score}分</span>
+                                </div>
+                                <div className="flex items-center justify-between mt-0.5">
+                                  <span className="text-[#ccc] text-[11px] truncate flex-1">{h.home?.name}</span>
+                                  <span className="text-white font-mono text-[11px] mx-2 font-bold">
+                                    {h.home?.score ?? 0}-{h.away?.score ?? 0}
+                                  </span>
+                                  <span className="text-[#ccc] text-[11px] truncate flex-1 text-right">{h.away?.name}</span>
+                                </div>
+                                {sig.reasons.length > 0 && (
+                                  <div className="text-[9px] text-[#666] mt-0.5 truncate">
+                                    {sig.reasons.slice(0, 3).join(' · ')}
+                                  </div>
+                                )}
+                              </button>
+                            ))}
                           </div>
-                          <div className="flex items-center justify-between mt-0.5">
-                            <span className="text-[#ccc] text-xs truncate flex-1">{h.home?.name}</span>
-                            <span className="text-white font-mono text-xs mx-2 font-bold">
-                              {h.home?.score ?? 0} - {h.away?.score ?? 0}
-                            </span>
-                            <span className="text-[#ccc] text-xs truncate flex-1 text-right">{h.away?.name}</span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] text-[#666]">
-                            {typeof h.initialOverUnder === 'number' && <span>O/U {h.initialOverUnder}</span>}
-                            {typeof h.initialHandicap === 'number' && <span>让球 {h.initialHandicap > 0 ? '+' : ''}{h.initialHandicap}</span>}
-                            {h.halftimeScore && <span>HT {h.halftimeScore.home ?? 0}-{h.halftimeScore.away ?? 0}</span>}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           );
         })}
-
-        {/* Placeholder for future strategies */}
-        <div className="rounded-lg border border-dashed border-[#333] px-3 py-4 text-center">
-          <p className="text-[10px] text-[#555]">更多策略即将加入</p>
-        </div>
       </div>
     </div>
   );

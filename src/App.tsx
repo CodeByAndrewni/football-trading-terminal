@@ -54,6 +54,7 @@ class ErrorBoundary extends Component<
 const HomePage = lazy(() => import('./pages/HomePage'));
 const MatchDetailPage = lazy(() => import('./pages/MatchDetailPage'));
 const AiChatPage = lazy(() => import('./pages/AiChatPage'));
+const PaperTradePage = lazy(() => import('./pages/PaperTradePage'));
 
 // 加载中显示
 function PageLoading() {
@@ -76,6 +77,7 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/match/:matchId" element={<MatchDetailPage />} />
             <Route path="/ai" element={<AiChatPage />} />
+            <Route path="/paper-trade" element={<PaperTradePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             </Suspense>
