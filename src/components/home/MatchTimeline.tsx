@@ -110,14 +110,11 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
         return (
           <span
             key={`${event.team}-${event.type}-${event.minute}-${idx}`}
-            className="absolute transform -translate-x-1/2 flex flex-col items-center"
+            className="absolute text-[13px] transform -translate-x-1/2 leading-none"
             style={positionStyle}
             title={`${event.minute}' ${isHome ? "主队" : "客队"}进球`}
           >
-            <span className="text-[11px] leading-none">⚽</span>
-            <span
-              className={`w-1.5 h-1.5 rounded-full mt-px ${isHome ? "bg-[#ef4444]" : "bg-[#3b82f6]"}`}
-            />
+            {isHome ? "🔴" : "🔵"}
           </span>
         );
       }
