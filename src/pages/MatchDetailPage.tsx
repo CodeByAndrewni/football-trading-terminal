@@ -440,9 +440,22 @@ function EventsFeed({ match }: { match: AdvancedMatch }) {
         else if (t === 'var') desc = ev.detail ?? 'VAR';
         else desc = ev.detail ?? ev.type;
 
-        const subLine = t === 'subst'
-          ? `换上 ${playerName} · 换下 ${assistName ?? '?'}`
-          : `${playerName}${playerName ? ' - ' : ''}${desc}`;
+        let subLine: string;
+        let subIntent: string | null = null;
+        if (t === 'subst') {
+          const sub = match.substitutions?.find(
+            (s) => s.minute === minute && (s.playerIn === playerName || s.playerOut === (assistName ?? '')),
+          );
+          const posIn = sub?.playerInPosition ? POS_LABEL[sub.playerInPosition] ?? sub.playerInPosition : '';
+          const posOut = sub?.playerOutPosition ? POS_LABEL[sub.playerOutPosition] ?? sub.playerOutPosition : '';
+          const inLabel = posIn ? `${playerName}(${posIn})` : playerName;
+          const outLabel = posOut ? `${assistName ?? '?'}(${posOut})` : (assistName ?? '?');
+          subLine = `换上 ${inLabel} · 换下 ${outLabel}`;
+          if (sub?.type === 'attack') subIntent = '进攻加强';
+          else if (sub?.type === 'defense') subIntent = '防守加强';
+        } else {
+          subLine = `${playerName}${playerName ? ' - ' : ''}${desc}`;
+        }
 
         return (
           <div
@@ -454,7 +467,16 @@ function EventsFeed({ match }: { match: AdvancedMatch }) {
             <span className="font-mono text-[11px] text-[#999] w-10 text-right flex-shrink-0 pt-0.5">{mStr}</span>
             <span className="text-sm flex-shrink-0">{icon}</span>
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-[#e0e0e0] truncate">{subLine}</div>
+              <div className="text-xs text-[#e0e0e0] truncate">
+                {subLine}
+                {subIntent && (
+                  <span className={`ml-1 text-[9px] px-1 py-0.5 rounded ${
+                    subIntent === '进攻加强' ? 'bg-orange-500/20 text-orange-400' : 'bg-blue-500/20 text-blue-400'
+                  }`}>
+                    {subIntent}
+                  </span>
+                )}
+              </div>
               <div className="text-[10px] text-[#888] truncate">({teamName})</div>
             </div>
           </div>

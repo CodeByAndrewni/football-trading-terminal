@@ -19,7 +19,7 @@ import {
   getApiCallsThisCycle,
   resetApiCallsThisCycle,
 } from './api-football.js';
-import { aggregateMatches, calculateBasicKillScore } from './aggregator.js';
+import { aggregateMatches, calculateBasicKillScore, applyLineupsAndSubPositions } from './aggregator.js';
 import { persistLiveToSupabase } from './supabase-live-persist.js';
 import {
   enrichFixtures,
@@ -207,6 +207,7 @@ async function refreshMatches(): Promise<{ matches: unknown[]; meta: RefreshMeta
       highLoad: liveFixtureIds.length >= CONFIG.HIGH_LOAD_LIVE_THRESHOLD,
     });
     mergeEnrichmentIntoMatches(matches, enrichmentMap);
+    applyLineupsAndSubPositions(matches);
 
     // 应用已缓存的中文名称
     applyTranslations(matches);

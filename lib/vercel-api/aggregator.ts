@@ -88,6 +88,15 @@ export interface AdvancedMatch {
   // === 牌况 (来源: LiveEventsCore ← /fixtures/events, type=Card) ===
   cards?: CardInfo;
 
+  // === 阵容 (来源: enrichment ← /fixtures/lineups) ===
+  lineups?: {
+    team: { id: number; name: string; logo?: string };
+    formation: string;
+    startXI: { player: { id: number; name: string; number: number; pos: string; grid: string | null } }[];
+    substitutes: { player: { id: number; name: string; number: number; pos: string; grid: string | null } }[];
+    coach: { id: number; name: string; photo?: string };
+  }[];
+
   // === 数据质量标记 ===
   _dataQuality?: 'REAL' | 'PARTIAL' | 'INVALID';
   _unscoreable?: boolean;
@@ -1064,6 +1073,107 @@ export function aggregateMatches(
   }
 
   return results;
+}
+
+// ============================================
+// 阵容解析 + 换人位置关联
+// ============================================
+
+interface RawLineupPlayer {
+  id: number;
+  name: string;
+  number: number;
+  pos: string;
+  grid: string | null;
+}
+
+interface RawLineupTeam {
+  team: { id: number; name: string; logo?: string };
+  formation: string;
+  startXI: { player: RawLineupPlayer }[];
+  substitutes: { player: RawLineupPlayer }[];
+  coach: { id: number; name: string; photo?: string };
+}
+
+const POS_RANK: Record<string, number> = { G: 0, D: 1, M: 2, F: 3 };
+
+function inferSubType(posIn: string | null, posOut: string | null): 'attack' | 'defense' | 'neutral' {
+  if (!posIn || !posOut) return 'neutral';
+  const rIn = POS_RANK[posIn] ?? 2;
+  const rOut = POS_RANK[posOut] ?? 2;
+  if (rIn > rOut) return 'attack';
+  if (rIn < rOut) return 'defense';
+  return 'neutral';
+}
+
+/**
+ * Post-process: parse enrichment.lineups into match.lineups,
+ * and cross-reference substitution events with lineup data
+ * to fill playerInPosition, playerOutPosition, and type.
+ */
+export function applyLineupsAndSubPositions(matches: AdvancedMatch[]): void {
+  for (const match of matches) {
+    const rawLineups = (match.enrichment as { lineups?: unknown[] } | undefined)?.lineups;
+    if (!rawLineups || !Array.isArray(rawLineups) || rawLineups.length === 0) continue;
+
+    // Build a player ID → position lookup from all lineup entries
+    const posMap = new Map<number, string>();
+    const parsedLineups: RawLineupTeam[] = [];
+
+    for (const raw of rawLineups) {
+      const lu = raw as RawLineupTeam;
+      if (!lu?.team?.id || !lu?.startXI) continue;
+
+      for (const s of lu.startXI ?? []) {
+        if (s.player?.id && s.player.pos) posMap.set(s.player.id, s.player.pos);
+      }
+      for (const s of lu.substitutes ?? []) {
+        if (s.player?.id && s.player.pos) posMap.set(s.player.id, s.player.pos);
+      }
+      parsedLineups.push(lu);
+    }
+
+    // Attach structured lineups to match (so frontend can render lineup tab)
+    if (parsedLineups.length > 0 && !match.lineups) {
+      match.lineups = parsedLineups.map((lu) => ({
+        team: { id: lu.team.id, name: lu.team.name, logo: lu.team.logo },
+        formation: lu.formation ?? '',
+        startXI: (lu.startXI ?? []).map((s) => ({
+          player: { id: s.player.id, name: s.player.name, number: s.player.number, pos: s.player.pos ?? '', grid: s.player.grid },
+        })),
+        substitutes: (lu.substitutes ?? []).map((s) => ({
+          player: { id: s.player.id, name: s.player.name, number: s.player.number, pos: s.player.pos ?? '', grid: s.player.grid },
+        })),
+        coach: lu.coach ?? { id: 0, name: '' },
+      }));
+    }
+
+    if (posMap.size === 0 || !match.substitutions || match.substitutions.length === 0) continue;
+
+    // Cross-reference substitutions with events to get player IDs
+    const subEvents = (match.events ?? []).filter(
+      (ev) => (ev.type ?? '').toLowerCase() === 'subst',
+    );
+
+    for (const sub of match.substitutions) {
+      // Find matching event by minute and player name
+      const ev = subEvents.find(
+        (e) =>
+          e.minute === sub.minute &&
+          (e.player?.name === sub.playerIn || e.assist?.name === sub.playerOut),
+      );
+      if (!ev) continue;
+
+      const inId = ev.player?.id;
+      const outId = ev.assist?.id;
+      const posIn = inId ? posMap.get(inId) ?? null : null;
+      const posOut = outId ? posMap.get(outId) ?? null : null;
+
+      sub.playerInPosition = posIn;
+      sub.playerOutPosition = posOut;
+      sub.type = inferSubType(posIn, posOut);
+    }
+  }
 }
 
 /**
