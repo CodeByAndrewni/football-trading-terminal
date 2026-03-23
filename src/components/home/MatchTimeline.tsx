@@ -121,11 +121,11 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
         return (
           <span
             key={`${event.team}-${event.type}-${event.minute}-${idx}`}
-            className={`${baseClass} absolute text-[#00d4ff] text-[8px]`}
+            className={`${baseClass} absolute text-[#00d4ff]`}
             style={positionStyle}
             title={`${event.minute}' 换人`}
           >
-            ↔
+            🔄
           </span>
         );
       case "yellow":
@@ -173,25 +173,17 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
 
   return (
     <div className={`relative bg-[#111] rounded overflow-hidden ${className}`}>
-      {/* 顶部：角球总览（不展示具体时间点，避免伪造角球时间） */}
-      {totalCorners > 0 && (
-        <div className="flex items-center justify-end px-2 py-1 text-[10px] text-[#999] gap-1 border-b border-[#222]">
-          <span>🚩 角球</span>
-          <span>
-            主 {match.corners?.home ?? 0} - 客 {match.corners?.away ?? 0}
-          </span>
-        </div>
-      )}
-
       <div className="relative h-8 bg-[#1a1a1a] overflow-hidden">
       {/* 进度条 */}
       <div
         className={`absolute left-0 top-0 h-full transition-all duration-300 ${
           isHalfTime
-            ? "bg-gradient-to-r from-[#2a2a0a] to-[#3d3d0d]"
+            ? "bg-gradient-to-r from-[#332b00] to-[#443a00]"
             : isFinished
-              ? "bg-gradient-to-r from-[#1a1a2a] to-[#1a1a2a]"
-              : "bg-gradient-to-r from-[#0a2a1a] to-[#0d3d1d]"
+              ? "bg-gradient-to-r from-[#1a1a2e] to-[#1a1a2e]"
+              : currentMinute >= 85
+                ? "bg-gradient-to-r from-[#331a00] to-[#442200]"
+                : "bg-gradient-to-r from-[#003320] to-[#004d30]"
         }`}
         style={{ width: `${progressPercent}%` }}
       />

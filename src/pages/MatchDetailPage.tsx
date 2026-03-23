@@ -211,13 +211,19 @@ function ScoreBoard({ match, minuteDisplay, isLive }: { match: AdvancedMatch; mi
           </div>
           {ht && <span className="text-[10px] text-[#555]">HT {ht.home ?? 0}-{ht.away ?? 0}</span>}
           {/* Initial odds row */}
-          <div className="flex items-center gap-3 mt-1.5 text-[10px]">
-            <span className="text-[#888]">初: </span>
-            <span className="text-[#aaa]">{hdp != null ? `让球 ${hdp > 0 ? '+' : ''}${hdp}` : '-'}</span>
-            <span className="text-[#555]">/</span>
-            <span className="text-[#aaa]">{ou != null ? `大小 ${ou}` : '-'}</span>
-            <span className="text-[#555]">/</span>
-            <span className="text-[#aaa]">{mw ? `${mw.home ?? '-'}/${mw.draw ?? '-'}/${mw.away ?? '-'}` : '-'}</span>
+          <div className="flex items-center gap-2 mt-1.5 text-[10px] flex-wrap justify-center">
+            <span className="text-[#999]">初:</span>
+            <span className="text-[#ccc]">{hdp != null ? `让球 ${hdp > 0 ? '+' : ''}${hdp}` : '让球 —'}</span>
+            <span className="text-[#555]">|</span>
+            <span className="text-[#ccc]">{ou != null ? `大小 ${ou}` : '大小 —'}</span>
+            {mw && (
+              <>
+                <span className="text-[#555]">|</span>
+                <span className="text-[#ccc]">胜<span className="text-[#e0e0e0] font-mono">{mw.home ?? '-'}</span></span>
+                <span className="text-[#ccc]">平<span className="text-[#e0e0e0] font-mono">{mw.draw ?? '-'}</span></span>
+                <span className="text-[#ccc]">负<span className="text-[#e0e0e0] font-mono">{mw.away ?? '-'}</span></span>
+              </>
+            )}
           </div>
         </div>
 
@@ -292,12 +298,12 @@ function EventTimelineBar({ match }: { match: AdvancedMatch }) {
       </div>
 
       {/* Main bar */}
-      <div className="relative h-10 bg-[#111] rounded-lg overflow-hidden">
+      <div className="relative h-10 bg-[#0d1117] rounded-lg overflow-hidden">
         {/* Time scale marks: 0, 15, 30, HT, 60, 75, 90 */}
         {[0, 15, 30, 45, 60, 75, 90].map((m) => (
           <div key={m} className="absolute top-0 bottom-0" style={{ left: `${(m / 95) * 100}%` }}>
             <div className={`h-full ${m === 45 ? 'w-px bg-[#444]' : 'w-px bg-[#1a1a1a]'}`} />
-            <span className="absolute -bottom-3.5 -translate-x-1/2 text-[8px] text-[#444] font-mono">
+            <span className="absolute -bottom-3.5 -translate-x-1/2 text-[8px] text-[#666] font-mono">
               {m === 45 ? 'HT' : m}
             </span>
           </div>
@@ -350,7 +356,7 @@ function EventTimelineBar({ match }: { match: AdvancedMatch }) {
 
       {/* Bottom scale space + Legend */}
       <div className="flex items-center justify-between mt-4">
-        <div className="flex items-center gap-3 text-[10px] text-[#666]">
+        <div className="flex items-center gap-3 text-[10px] text-[#888]">
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-500 inline-block" /> 进球</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-yellow-500 inline-block" /> 黄牌</span>
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-500 inline-block" /> 红牌</span>
@@ -386,9 +392,9 @@ function StatsOverview({ match }: { match: AdvancedMatch }) {
           const aWin = aNum > hNum;
           return (
             <div key={r.label} className="contents">
-              <span className={`text-right font-mono pr-2 ${hWin ? 'text-accent-primary font-bold' : 'text-[#bbb]'}`}>{r.home}</span>
-              <span className="text-center text-[#666]">{r.label}</span>
-              <span className={`text-left font-mono pl-2 ${aWin ? 'text-red-400 font-bold' : 'text-[#bbb]'}`}>{r.away}</span>
+              <span className={`text-right font-mono pr-2 ${hWin ? 'text-cyan-400 font-bold' : 'text-[#bbb]'}`}>{r.home}</span>
+              <span className="text-center text-[#999]">{r.label}</span>
+              <span className={`text-left font-mono pl-2 ${aWin ? 'text-rose-400 font-bold' : 'text-[#bbb]'}`}>{r.away}</span>
             </div>
           );
         })}
@@ -442,14 +448,14 @@ function EventsFeed({ match }: { match: AdvancedMatch }) {
           <div
             key={`${minute}-${i}`}
             className={`flex items-start gap-2.5 px-2 py-1.5 rounded transition-colors hover:bg-[#111] ${
-              t === 'goal' ? 'bg-green-500/5' : ''
+              t === 'goal' ? 'bg-green-500/8' : t === 'card' ? 'bg-red-500/5' : ''
             }`}
           >
-            <span className="font-mono text-[11px] text-[#666] w-10 text-right flex-shrink-0 pt-0.5">{mStr}</span>
+            <span className="font-mono text-[11px] text-[#999] w-10 text-right flex-shrink-0 pt-0.5">{mStr}</span>
             <span className="text-sm flex-shrink-0">{icon}</span>
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-[#ccc] truncate">{subLine}</div>
-              <div className="text-[10px] text-[#555] truncate">({teamName})</div>
+              <div className="text-xs text-[#e0e0e0] truncate">{subLine}</div>
+              <div className="text-[10px] text-[#888] truncate">({teamName})</div>
             </div>
           </div>
         );

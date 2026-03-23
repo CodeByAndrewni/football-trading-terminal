@@ -10,6 +10,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronUp, Bug, Filter, Volume2 } from "lucide-react";
 import type { AdvancedMatch } from "../../data/advancedMockData";
+import { LEAGUE_COLORS } from "../../data/advancedMockData";
 import type { UnifiedSignal } from "../../types/unified-scoring";
 import {
   calculateDynamicScore,
@@ -497,7 +498,7 @@ return (
 
     <table className="w-full min-w-[780px] border-collapse">
       <thead>
-        <tr className="bg-[#1a1a1a] border-b border-[#333]">
+        <tr className="bg-[#0d1117] border-b border-[#21262d]">
           <th
             className="w-[70px] px-2 py-2.5 text-center text-[11px] font-medium text-[#888] cursor-pointer hover:text-[#00d4ff]"
             onClick={() => handleSort("minute")}
@@ -685,30 +686,37 @@ function MatchRow({
     );
   };
 
+  const hasRedCard = (match.cards?.red?.home ?? 0) + (match.cards?.red?.away ?? 0) > 0;
+  const totalGoals = (match.home?.score ?? 0) + (match.away?.score ?? 0);
+
   const getRowStyle = () => {
-    // v159: 使用晚期模块 action
     const action = lateSignal?.action ?? moduleASignal?.action;
 
     if (action === "BET") {
-      return "bg-[#111] hover:bg-[rgba(239,68,68,0.08)] border-l-2 border-l-[#ef4444]";
+      return "bg-[#1a0a0a] hover:bg-[rgba(239,68,68,0.1)] border-l-2 border-l-[#ef4444]";
     }
     if (action === "PREPARE") {
-      return "bg-[#111] hover:bg-[rgba(249,115,22,0.08)] border-l-2 border-l-[#f97316]";
+      return "bg-[#1a120a] hover:bg-[rgba(249,115,22,0.1)] border-l-2 border-l-[#f97316]";
     }
-    // 预热模式特殊样式
     if (isWarmup && action === "WATCH") {
-      return "bg-[#111] hover:bg-[rgba(234,179,8,0.05)] border-l-2 border-l-[#eab308]/50";
+      return "bg-[#1a1a0a] hover:bg-[rgba(234,179,8,0.08)] border-l-2 border-l-[#eab308]/50";
     }
     if (match.minute >= 75 && rating >= 80) {
-      return "bg-[#111] hover:bg-[rgba(255,68,68,0.05)] border-l-2 border-l-[#ff4444]";
+      return "bg-[#1a0a0a] hover:bg-[rgba(255,68,68,0.08)] border-l-2 border-l-[#ff4444]";
     }
     if (match.minute >= 75 && rating >= 70) {
-      return "bg-[#111] hover:bg-[rgba(255,170,0,0.05)] border-l-2 border-l-[#ffaa00]";
+      return "bg-[#1a1a0a] hover:bg-[rgba(255,170,0,0.08)] border-l-2 border-l-[#ffaa00]";
+    }
+    if (hasRedCard) {
+      return "bg-[#160a0a] hover:bg-[rgba(239,68,68,0.06)]";
+    }
+    if (totalGoals >= 3) {
+      return "bg-[#0a160a] hover:bg-[rgba(34,197,94,0.06)]";
     }
     if (match.minute >= 65) {
-      return "bg-[#111] hover:bg-[rgba(0,255,136,0.05)]";
+      return "bg-[#0d1117] hover:bg-[rgba(0,255,136,0.06)]";
     }
-    return "bg-[#111] hover:bg-[#1a1a1a]";
+    return "bg-[#0d1117] hover:bg-[#151b23]";
   };
 
   // 让球盘显示 - Phase 2A: 无假数据
@@ -944,21 +952,24 @@ function MatchRow({
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div
-                className="text-[11px] text-[#666] truncate"
+                className="text-[11px] truncate"
+                style={{ color: LEAGUE_COLORS[match.league] || LEAGUE_COLORS[match.leagueShort ?? ''] || '#888' }}
                 title={formatLeagueWithCountry(match)}
               >
                 {formatLeagueWithCountry(match)}
               </div>
-              <div className="text-[12px] text-[#e0e0e0] truncate">
-                {match.home?.name || "-"} vs {match.away?.name || "-"}
+              <div className="flex items-center gap-1 text-[12px] text-[#e0e0e0] truncate">
+                <TeamLabel name={match.home?.name || "-"} rank={match.home?.rank} redCards={match.cards?.red?.home ?? 0} />
+                <span className="text-[#555] text-[10px] flex-shrink-0">vs</span>
+                <TeamLabel name={match.away?.name || "-"} rank={match.away?.rank} redCards={match.cards?.red?.away ?? 0} />
               </div>
             </div>
             <span className="text-[16px] font-bold font-mono whitespace-nowrap">
-              <span className={match.home?.score > match.away?.score ? "text-[#00d4ff]" : "text-white"}>
+              <span className={match.home?.score > match.away?.score ? "text-[#22d3ee]" : "text-white"}>
                 {match.home?.score ?? "-"}
               </span>
               <span className="text-[#444] mx-1">-</span>
-              <span className={match.away?.score > match.home?.score ? "text-[#ff6b6b]" : "text-white"}>
+              <span className={match.away?.score > match.home?.score ? "text-[#f87171]" : "text-white"}>
                 {match.away?.score ?? "-"}
               </span>
             </span>
@@ -1026,6 +1037,24 @@ function ImbalanceCell({
   return (
     <span className={`text-[11px] font-mono font-medium ${colorClass}`}>
       {sign}{value}
+    </span>
+  );
+}
+
+function TeamLabel({ name, rank, redCards }: { name: string; rank?: number | null; redCards: number }) {
+  return (
+    <span className="inline-flex items-center gap-0.5 truncate">
+      {(rank ?? 0) > 0 && (
+        <span className="text-[9px] font-mono bg-[#2a2a2a] text-[#aaa] px-1 rounded flex-shrink-0">
+          {rank}
+        </span>
+      )}
+      <span className="truncate">{name}</span>
+      {redCards > 0 && (
+        <span className="text-[9px] bg-red-500/20 text-red-400 px-0.5 rounded flex-shrink-0 font-bold">
+          🟥{redCards}
+        </span>
+      )}
     </span>
   );
 }

@@ -7,7 +7,7 @@
  * ============================================
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useRef, useState, useEffect } from 'react';
 import { queryKeys, refetchIntervals } from '../lib/queryClient';
 import {
@@ -139,15 +139,10 @@ export function useLiveMatchesAdvanced(options?: {
         try {
           const result = await fetchAggregatedMatches();
 
-          // 检查是否正在初始化
+          // 检查是否正在初始化 — 抛出错误让 React Query 保留上次缓存，避免闪断
           if (isInitializing(result.meta)) {
             console.log('[useMatches] Aggregator initializing, waiting...');
-            return {
-              matches: [],
-              dataSource: 'aggregated',
-              meta: result.meta,
-              error: 'INITIALIZING',
-            };
+            throw new Error('INITIALIZING');
           }
 
           // 检查缓存是否陈旧
@@ -256,6 +251,9 @@ export function useLiveMatchesAdvanced(options?: {
     staleTime: 10 * 1000,
     refetchInterval: options?.refetchInterval ?? 10 * 1000,
     enabled: options?.enabled ?? true,
+    placeholderData: keepPreviousData,
+    retry: 2,
+    retryDelay: 3000,
     structuralSharing: (oldData, newData) => {
       if (!oldData) return newData;
       const old = oldData as MatchesResult;
