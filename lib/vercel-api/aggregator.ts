@@ -287,6 +287,12 @@ const STATUS_MAP: Record<string, AdvancedMatch['status']> = {
   'LIVE': 'live',
   'AET': 'aet',
   'PEN': 'pen',
+  'PST': 'ft',
+  'CANC': 'ft',
+  'ABD': 'ft',
+  'AWD': 'ft',
+  'WO': 'ft',
+  'TBD': 'ns',
 };
 
 // ============================================

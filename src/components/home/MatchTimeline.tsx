@@ -100,28 +100,32 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
 
   // 渲染事件图标
   const renderEventIcon = (event: TimelineEvent, idx: number) => {
-    const baseClass = "text-[9px] transform -translate-x-1/2";
     const positionStyle = {
       left: `${Math.min((event.minute / 90) * 100, 98)}%`,
     };
 
     switch (event.type) {
-      case "goal":
+      case "goal": {
+        const isHome = event.team === "home";
         return (
           <span
             key={`${event.team}-${event.type}-${event.minute}-${idx}`}
-            className={`${baseClass} absolute ${event.team === "home" ? "text-[#00ff88]" : "text-[#ff6b6b]"}`}
+            className="absolute transform -translate-x-1/2 flex flex-col items-center"
             style={positionStyle}
-            title={`${event.minute}' 进球`}
+            title={`${event.minute}' ${isHome ? "主队" : "客队"}进球`}
           >
-            ⚽
+            <span className="text-[11px] leading-none">⚽</span>
+            <span
+              className={`w-1.5 h-1.5 rounded-full mt-px ${isHome ? "bg-[#ef4444]" : "bg-[#3b82f6]"}`}
+            />
           </span>
         );
+      }
       case "sub":
         return (
           <span
             key={`${event.team}-${event.type}-${event.minute}-${idx}`}
-            className={`${baseClass} absolute text-[#00d4ff]`}
+            className="absolute text-[9px] transform -translate-x-1/2 text-[#00d4ff]"
             style={positionStyle}
             title={`${event.minute}' 换人`}
           >
@@ -132,7 +136,7 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
         return (
           <span
             key={`${event.team}-${event.type}-${event.minute}-${idx}`}
-            className={`${baseClass} absolute text-[#ffdd00] text-[8px]`}
+            className="absolute text-[8px] transform -translate-x-1/2 text-[#ffdd00]"
             style={positionStyle}
             title={`${event.minute}' 黄牌`}
           >
@@ -143,7 +147,7 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
         return (
           <span
             key={`${event.team}-${event.type}-${event.minute}-${idx}`}
-            className={`${baseClass} absolute text-[#ff4444]`}
+            className="absolute text-[10px] transform -translate-x-1/2"
             style={positionStyle}
             title={`${event.minute}' 红牌`}
           >
@@ -173,7 +177,7 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
 
   return (
     <div className={`relative bg-[#111] rounded overflow-hidden ${className}`}>
-      <div className="relative h-8 bg-[#1a1a1a] overflow-hidden">
+      <div className="relative h-9 bg-[#1a1a1a] overflow-hidden">
       {/* 进度条 */}
       <div
         className={`absolute left-0 top-0 h-full transition-all duration-300 ${
@@ -209,12 +213,12 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
           )}
 
           {/* 主队事件（上方） */}
-          <div className="absolute left-0 top-0.5 w-full h-3.5 flex items-center">
+          <div className="absolute left-0 top-0 w-full h-[18px] flex items-end">
             {homeEvents.map(renderEventIcon)}
           </div>
 
           {/* 客队事件（下方） */}
-          <div className="absolute left-0 bottom-0.5 w-full h-3.5 flex items-center">
+          <div className="absolute left-0 bottom-0 w-full h-[18px] flex items-start">
             {awayEvents.map(renderEventIcon)}
           </div>
 
@@ -235,11 +239,24 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
 
       {/* 已结束 */}
       {isFinished && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
-          <span className="text-[11px] font-mono font-medium text-[#888]">
-            {homeScore}-{awayScore} 完
-          </span>
-        </div>
+        <>
+          {hasEvents ? (
+            <>
+              <div className="absolute left-0 top-0 w-full h-[18px] flex items-end">
+                {homeEvents.map(renderEventIcon)}
+              </div>
+              <div className="absolute left-0 bottom-0 w-full h-[18px] flex items-start">
+                {awayEvents.map(renderEventIcon)}
+              </div>
+            </>
+          ) : (
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+              <span className="text-[11px] font-mono font-medium text-[#888]">
+                {homeScore}-{awayScore} 完
+              </span>
+            </div>
+          )}
+        </>
       )}
       </div>
     </div>
