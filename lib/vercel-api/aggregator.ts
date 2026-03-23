@@ -251,9 +251,11 @@ const LEAGUE_NAME_MAP: Record<number, { name: string; short: string }> = {
   17: { name: '世界杯', short: '世界杯' },
   736: { name: '墨TDP', short: '墨TDP' },
   239: { name: '哥伦比亚甲', short: '哥甲' },
+  240: { name: '哥伦比亚乙级联赛', short: '哥伦乙' },
   242: { name: '厄瓜多尔甲', short: '厄甲' },
   265: { name: '巴拉圭甲', short: '巴拉甲' },
   268: { name: '乌拉圭甲', short: '乌甲' },
+  269: { name: '乌拉圭乙级联赛', short: '乌拉乙' },
   266: { name: '秘鲁甲', short: '秘甲' },
   73: { name: '巴乙', short: '巴乙' },
 };
