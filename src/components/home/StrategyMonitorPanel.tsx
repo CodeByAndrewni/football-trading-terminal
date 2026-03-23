@@ -76,6 +76,47 @@ function hasRedCard(m: AdvancedMatch): boolean {
   return (red.home ?? 0) + (red.away ?? 0) > 0;
 }
 
+function isOverSprint(m: AdvancedMatch): boolean {
+  if (m.minute < 65) return false;
+  const xgTotal = (m.stats?.xG?.home ?? 0) + (m.stats?.xG?.away ?? 0);
+  const goals = (m.home?.score ?? 0) + (m.away?.score ?? 0);
+  const xgDebt = xgTotal - goals;
+  const shotsTotal = (m.stats?.shots?.home ?? 0) + (m.stats?.shots?.away ?? 0);
+  return xgDebt >= 0.8 && shotsTotal >= 15 && m.stats?._realDataAvailable === true;
+}
+
+function isStrongBehind(m: AdvancedMatch): boolean {
+  if (m.minute < 65) return false;
+  const hdp = m.initialHandicap;
+  if (typeof hdp !== 'number') return false;
+  const homeScore = m.home?.score ?? 0;
+  const awayScore = m.away?.score ?? 0;
+  // hdp < 0 means home is favorite
+  if (hdp < -0.5 && homeScore <= awayScore) return true;
+  if (hdp > 0.5 && awayScore <= homeScore) return true;
+  return false;
+}
+
+function isDeadlockBreak(m: AdvancedMatch): boolean {
+  if (m.minute < 70) return false;
+  const goals = (m.home?.score ?? 0) + (m.away?.score ?? 0);
+  if (goals > 1) return false;
+  const shotsTotal = (m.stats?.shots?.home ?? 0) + (m.stats?.shots?.away ?? 0);
+  return shotsTotal >= 12 && m.stats?._realDataAvailable === true;
+}
+
+function isWeakDefend(m: AdvancedMatch): boolean {
+  if (m.minute < 70) return false;
+  const hdp = m.initialHandicap;
+  if (typeof hdp !== 'number') return false;
+  const homeScore = m.home?.score ?? 0;
+  const awayScore = m.away?.score ?? 0;
+  // hdp < 0 means home is favorite; weak = away
+  if (hdp < -0.5 && awayScore > homeScore) return true;
+  if (hdp > 0.5 && homeScore > awayScore) return true;
+  return false;
+}
+
 export const BUILTIN_STRATEGIES: StrategyDef[] = [
   {
     id: 'favorite_trailing_80',
@@ -88,8 +129,36 @@ export const BUILTIN_STRATEGIES: StrategyDef[] = [
     id: 'red_card_alert',
     label: '红牌比赛',
     emoji: '🟥',
-    desc: '场上任一方出现红牌 — 不限时间、不限联赛',
+    desc: '场上任一方出现红牌',
     filter: hasRedCard,
+  },
+  {
+    id: 'over_sprint',
+    label: '大球冲刺',
+    emoji: '🚀',
+    desc: '65\'+ · xG 债务≥0.8 · 总射门≥15 · 有真实数据',
+    filter: isOverSprint,
+  },
+  {
+    id: 'strong_behind',
+    label: '强队反扑',
+    emoji: '💪',
+    desc: '65\'+ · 让球方当前落后或平局',
+    filter: isStrongBehind,
+  },
+  {
+    id: 'deadlock_break',
+    label: '闷平破局',
+    emoji: '🔓',
+    desc: '70\'+ · 总进球≤1 · 总射门≥12 · 有真实数据',
+    filter: isDeadlockBreak,
+  },
+  {
+    id: 'weak_defend',
+    label: '弱队死守',
+    emoji: '🛡️',
+    desc: '70\'+ · 非让球方当前领先',
+    filter: isWeakDefend,
   },
 ];
 

@@ -129,44 +129,11 @@ export function calculateSignal(
   switch (module) {
     case 'A':
       return calculateModuleASignal(matchState, marketState);
-    case 'B':
-      // TODO: 实现 Module B
-      console.warn('Module B not implemented yet');
-      return null;
-    case 'C':
-      // TODO: 实现 Module C
-      console.warn('Module C not implemented yet');
-      return null;
-    case 'D':
-      // TODO: 实现 Module D
-      console.warn('Module D not implemented yet');
-      return null;
     default:
       return null;
   }
 }
 
-/**
- * 计算所有模块的信号
- */
-export function calculateAllSignals(
-  matchState: MatchStateInput,
-  marketState: MarketStateInput | null = null,
-  teamStrength?: { home: TeamStrengthInput; away: TeamStrengthInput }
-): Map<ModuleType, UnifiedSignal> {
-  const signals = new Map<ModuleType, UnifiedSignal>();
-
-  const modules: ModuleType[] = ['A', 'B', 'C', 'D'];
-
-  for (const module of modules) {
-    const signal = calculateSignal(module, matchState, marketState, teamStrength);
-    if (signal) {
-      signals.set(module, signal);
-    }
-  }
-
-  return signals;
-}
 
 /**
  * 从 AdvancedMatch 计算信号 (便捷函数)
@@ -494,7 +461,6 @@ export {
 
 export default {
   calculateSignal,
-  calculateAllSignals,
   calculateSignalFromMatch,
   calculateModuleASignals,
   filterHighScoreSignals,

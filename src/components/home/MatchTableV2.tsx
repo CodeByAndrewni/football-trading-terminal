@@ -31,6 +31,7 @@ import {
   type TeamStrengthInfo,
 } from "../../services/modules/unifiedLateModule";
 import { CompactScenarioTag } from "../ui/ScenarioTag";
+import { STRATEGY_CONFIG } from "../../config/strategyConfig";
 import { SimpleOddsBadge } from "../ui/OddsMovementBadge";
 // v161: 积分榜服务 + 声音通知
 import { batchGetMatchStrengths, type MatchStrengthMap } from "../../hooks/useStandings";
@@ -638,9 +639,9 @@ function MatchRow({
     if (status === "ns" || status === "未开始") return "text-[#666]";
     if (status === "ft" || status === "aet" || status === "pen")
       return "text-[#888]";
-    if (match.minute >= 85) return "text-[#ff4444] animate-pulse";
+    if (match.minute >= STRATEGY_CONFIG.ENDGAME_MINUTE) return "text-[#ff4444] animate-pulse";
     if (match.minute >= 80) return "text-[#ff6600]";
-    if (match.minute >= 75) return "text-[#ffaa00]";
+    if (match.minute >= STRATEGY_CONFIG.ACTIVE_MINUTE) return "text-[#ffaa00]";
     return "text-[#00ff88]";
   };
 

@@ -106,9 +106,10 @@ export interface UnifiedLateSignal extends Omit<UnifiedSignal, 'module' | 'score
 
 const MODULE_VERSION = 'v1.0';
 
-/** 预热模式阈值 */
-const WARMUP_MINUTE = 65;
-const ACTIVE_MINUTE = 80;
+import { STRATEGY_CONFIG } from '../../config/strategyConfig';
+
+const WARMUP_MINUTE = STRATEGY_CONFIG.WARMUP_MINUTE;
+const ACTIVE_MINUTE = STRATEGY_CONFIG.ACTIVE_MINUTE;
 
 /** 信号触发阈值 */
 const SIGNAL_THRESHOLDS = {
