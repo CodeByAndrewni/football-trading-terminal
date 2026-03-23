@@ -155,6 +155,7 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
 
   // Fire alerts for new hits
   useEffect(() => {
+    let hasNew = false;
     for (const s of BUILTIN_STRATEGIES) {
       if (!enabledIds.has(s.id)) continue;
       const hits = hitsMap.get(s.id) ?? [];
@@ -162,6 +163,7 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
         const key: AlertKey = `${s.id}:${h.id}`;
         if (firedRef.current.has(key)) continue;
         firedRef.current.add(key);
+        hasNew = true;
         const rec: AlertRecord = {
           key,
           strategyId: s.id,
@@ -177,6 +179,9 @@ export function StrategyMonitorPanel({ matches, onMatchClick }: Props) {
         };
         setAlerts((prev) => [rec, ...prev].slice(0, 50));
       }
+    }
+    if (hasNew && soundOn) {
+      soundService.play('alert');
     }
   }, [hitsMap, enabledIds, soundOn]);
 

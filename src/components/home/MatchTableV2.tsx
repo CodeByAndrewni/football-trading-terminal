@@ -959,9 +959,9 @@ function MatchRow({
                 {formatLeagueWithCountry(match)}
               </div>
               <div className="flex items-center gap-1 text-[12px] text-[#e0e0e0] truncate">
-                <TeamLabel name={match.home?.name || "-"} rank={match.home?.rank} redCards={match.cards?.red?.home ?? 0} />
+                <TeamLabel name={match.home?.name || "-"} rank={match.home?.rank} redCards={match.cards?.red?.home ?? 0} redMinutes={getRedCardMinutes(match, 'home')} />
                 <span className="text-[#555] text-[10px] flex-shrink-0">vs</span>
-                <TeamLabel name={match.away?.name || "-"} rank={match.away?.rank} redCards={match.cards?.red?.away ?? 0} />
+                <TeamLabel name={match.away?.name || "-"} rank={match.away?.rank} redCards={match.cards?.red?.away ?? 0} redMinutes={getRedCardMinutes(match, 'away')} />
               </div>
             </div>
             <span className="text-[16px] font-bold font-mono whitespace-nowrap">
@@ -1041,7 +1041,28 @@ function ImbalanceCell({
   );
 }
 
-function TeamLabel({ name, rank, redCards }: { name: string; rank?: number | null; redCards: number }) {
+function getRedCardMinutes(match: AdvancedMatch, side: 'home' | 'away'): number[] {
+  if (!match.events) return [];
+  return match.events
+    .filter((ev) => {
+      const t = (ev.type ?? '').toLowerCase();
+      const d = (ev.detail ?? '').toLowerCase();
+      const isRed = t === 'card' && (d.includes('red') || d.includes('second yellow'));
+      const isSide = ev.teamSide === side ||
+        (side === 'home' && ev.team?.id === match.homeTeamId) ||
+        (side === 'away' && ev.team?.id !== match.homeTeamId && ev.team?.id != null);
+      return isRed && isSide;
+    })
+    .map((ev) => ev.time?.elapsed ?? ev.minute ?? 0)
+    .sort((a, b) => a - b);
+}
+
+function TeamLabel({ name, rank, redCards, redMinutes = [] }: {
+  name: string;
+  rank?: number | null;
+  redCards: number;
+  redMinutes?: number[];
+}) {
   return (
     <span className="inline-flex items-center gap-0.5 truncate">
       {(rank ?? 0) > 0 && (
@@ -1051,8 +1072,11 @@ function TeamLabel({ name, rank, redCards }: { name: string; rank?: number | nul
       )}
       <span className="truncate">{name}</span>
       {redCards > 0 && (
-        <span className="text-[9px] bg-red-500/20 text-red-400 px-0.5 rounded flex-shrink-0 font-bold">
-          🟥{redCards}
+        <span
+          className="text-[9px] bg-red-500/20 text-red-400 px-0.5 rounded flex-shrink-0 font-bold"
+          title={redMinutes.length > 0 ? `红牌: ${redMinutes.map(m => m + "'").join(', ')}` : undefined}
+        >
+          🟥{redMinutes.length > 0 ? redMinutes.map(m => m + "'").join(',') : redCards}
         </span>
       )}
     </span>

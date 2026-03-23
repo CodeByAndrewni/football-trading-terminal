@@ -147,7 +147,7 @@ export function MatchTimeline({ match, className = "" }: MatchTimelineProps) {
             style={positionStyle}
             title={`${event.minute}' 红牌`}
           >
-            ▪
+            🟥
           </span>
         );
       default:

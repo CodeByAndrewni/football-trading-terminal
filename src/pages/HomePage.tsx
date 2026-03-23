@@ -27,7 +27,7 @@ import { MobileMenu } from '../components/layout/MobileMenu';
 import { AcceptanceReport } from '../components/home/AcceptanceReport';
 import { LateGameHunterPanel } from '../components/home/LateGameHunterPanel';
 import { LateHunterPanel } from '../components/home/LateHunterPanel';
-import { StrategyMonitorPanel } from '../components/home/StrategyMonitorPanel';
+import { StrategyMonitorPanel, BUILTIN_STRATEGIES } from '../components/home/StrategyMonitorPanel';
 import { StrategyAlertMarquee } from '../components/home/StrategyAlertMarquee';
 import { getWatchlist, addToWatchlist, removeFromWatchlist } from '../services/battleRoomWatchlist';
 // Phase 2: Live Scanner Engine
@@ -868,6 +868,18 @@ function RightSidePanel({ processedMatches, onMatchClick }: {
   const startX = useRef(0);
   const startW = useRef(0);
 
+  const hunterCount = useMemo(
+    () => processedMatches.filter((m) => m.minute >= 65 && !['ft', 'aet', 'pen', 'ns'].includes(m.status?.toLowerCase?.() ?? '')).length,
+    [processedMatches],
+  );
+  const strategyCount = useMemo(() => {
+    let count = 0;
+    for (const s of BUILTIN_STRATEGIES) {
+      count += processedMatches.filter(s.filter).length;
+    }
+    return count;
+  }, [processedMatches]);
+
   useEffect(() => {
     function onMove(e: MouseEvent) {
       if (!dragging.current) return;
@@ -881,7 +893,7 @@ function RightSidePanel({ processedMatches, onMatchClick }: {
   }, []);
 
   const tabCls = (t: RightTab) =>
-    `flex-1 px-2 py-2 text-xs font-medium transition-colors ${tab === t ? 'text-accent-primary border-b-2 border-accent-primary bg-[#0a0f14]' : 'text-[#888] hover:text-[#ccc]'}`;
+    `flex-1 px-2 py-2 text-xs font-medium transition-colors relative ${tab === t ? 'text-accent-primary border-b-2 border-accent-primary bg-[#0a0f14]' : 'text-[#888] hover:text-[#ccc]'}`;
 
   return (
     <aside className="hidden xl:flex flex-shrink-0 h-full" style={{ width }}>
@@ -896,9 +908,19 @@ function RightSidePanel({ processedMatches, onMatchClick }: {
           </button>
           <button type="button" className={tabCls('hunter')} onClick={() => setTab('hunter')}>
             <Zap className="w-3.5 h-3.5 inline mr-1" />尾盘猎手
+            {hunterCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 leading-none">
+                {hunterCount}
+              </span>
+            )}
           </button>
           <button type="button" className={tabCls('strategy')} onClick={() => setTab('strategy')}>
             <Target className="w-3.5 h-3.5 inline mr-1" />策略监控
+            {strategyCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 leading-none animate-pulse">
+                {strategyCount}
+              </span>
+            )}
           </button>
         </div>
         <div className="flex-1 overflow-hidden">
