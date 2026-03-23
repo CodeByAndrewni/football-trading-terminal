@@ -19,7 +19,7 @@ import dataAuditRoute from '../lib/vercel-api/data-audit-route.js';
 import lateGoalCollectRoute from '../lib/vercel-api/late-goal-collect-route.js';
 import paperTradeRoute from '../lib/vercel-api/paper-trade-route.js';
 import paperTradeSettleRoute from '../lib/vercel-api/paper-trade-settle-route.js';
-import paperTradeScanRoute from '../lib/vercel-api/paper-trade-scan-route.js';
+// paper-trade-scan-route 拆为独立 Serverless Function（api/pt-scan.ts），不走 catch-all
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawPathname = new URL(req.url || '/', 'http://localhost').pathname;
@@ -43,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (pathname === '/api/cron/late-goal-collect') return lateGoalCollectRoute(req, res);
     if (pathname === '/api/paper-trade') return paperTradeRoute(req, res);
     if (pathname === '/api/paper-trade/settle') return paperTradeSettleRoute(req, res);
-    if (pathname === '/api/paper-trade/scan') return paperTradeScanRoute(req, res);
+    // /api/pt-scan 由独立 Serverless Function 处理（api/pt-scan.ts）
 
     return res.status(404).json({
       success: false,

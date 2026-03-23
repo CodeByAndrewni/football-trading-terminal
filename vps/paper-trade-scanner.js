@@ -2,7 +2,7 @@
 /**
  * Paper Trade 扫描器 — VPS 常驻脚本
  *
- * 每 30 秒调 Vercel /api/paper-trade/scan 端点，
+ * 每 30 秒调 Vercel /api/pt-scan 端点，
  * 由 Vercel 端完成所有评估逻辑（读 KV → 情景引擎 → 写 Supabase）。
  *
  * 用法:
@@ -23,7 +23,7 @@ function ts() {
 
 async function scan() {
   try {
-    const resp = await fetch(`${API_BASE}/api/paper-trade/scan`, {
+    const resp = await fetch(`${API_BASE}/api/pt-scan`, {
       headers: { 'User-Agent': 'LivePro-VPS-Scanner/1.0' },
       signal: AbortSignal.timeout(25000),
     });
